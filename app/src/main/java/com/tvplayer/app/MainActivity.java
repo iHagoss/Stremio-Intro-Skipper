@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.KeyEvent; // <-- ADDED FOR TV REMOTE D-PAD SUPPORT
 import android.view.MotionEvent; // <-- ADDED FOR PROGRESS BAR SEEKING
 import android.view.View;
 import android.view.WindowManager;
@@ -112,6 +113,91 @@ public class MainActivity extends AppCompatActivity {
         // --- ADDED FOR PROGRESS BAR SEEKING ---
         setupProgressBarSeeking();
         // --------------------------------------
+        
+        // --- ADDED FOR TV REMOTE D-PAD SEEKING ---
+        setupProgressBarDpadSeeking();
+        // -----------------------------------------
+    }
+
+    /**
+     * CRITICAL FOR TV/FIRESTICK REMOTE CONTROL SUPPORT
+     * Handles D-pad key events from TV remote controls.
+     * 
+     * REQUIRED FOR: FireStick and Android TV remote control navigation
+     * INTERACTS WITH: ExoPlayer (player), ProgressBar (progressBar), and control buttons
+     * 
+     * KEY MAPPINGS:
+     * - DPAD_CENTER: Play/Pause when controls are visible, or toggle controls when on PlayerView
+     * - DPAD_LEFT: Seek backward 10 seconds when ProgressBar is focused
+     * - DPAD_RIGHT: Seek forward 10 seconds when ProgressBar is focused
+     * 
+     * This method is called automatically by Android when a key is pressed on the remote control.
+     * It must return true to consume the event, or false to let other handlers process it.
+     */
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        // Handle D-pad CENTER button (Select/OK button on remote)
+        if (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) {
+            // CRITICAL FIX: When controls are hidden, CENTER button should toggle play/pause AND show controls
+            // This provides direct playback control without requiring navigation to btnPlayPause first
+            if (customControls.getVisibility() != View.VISIBLE) {
+                // Toggle play/pause state
+                if (player != null) {
+                    if (player.isPlaying()) {
+                        player.pause();
+                    } else {
+                        player.play();
+                    }
+                }
+                // Then show the controls so user can see the updated play/pause button icon
+                toggleControls();
+                return true; // Event consumed
+            } else {
+                // If controls are visible, check what has focus
+                View focusedView = getCurrentFocus();
+                // If play/pause button has focus, clicking it is handled by its onClick listener
+                // If nothing specific has focus, toggle play/pause directly
+                if (focusedView == null || focusedView == playerView) {
+                    if (player != null) {
+                        if (player.isPlaying()) {
+                            player.pause();
+                        } else {
+                            player.play();
+                        }
+                    }
+                    resetControlsTimeout();
+                    return true; // Event consumed
+                }
+                // For other focused buttons, let their onClick listeners handle the click via super.onKeyDown
+            }
+        }
+        
+        // Handle D-pad LEFT button (Rewind when ProgressBar is focused)
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            View focusedView = getCurrentFocus();
+            if (focusedView == progressBar && player != null) {
+                // Seek backward 10 seconds
+                player.seekTo(Math.max(0, player.getCurrentPosition() - 10000));
+                updateTimeDisplays(); // Update UI immediately for visual feedback
+                resetControlsTimeout();
+                return true; // Event consumed
+            }
+        }
+        
+        // Handle D-pad RIGHT button (Fast-forward when ProgressBar is focused)
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            View focusedView = getCurrentFocus();
+            if (focusedView == progressBar && player != null) {
+                // Seek forward 10 seconds
+                player.seekTo(Math.min(player.getDuration(), player.getCurrentPosition() + 10000));
+                updateTimeDisplays(); // Update UI immediately for visual feedback
+                resetControlsTimeout();
+                return true; // Event consumed
+            }
+        }
+        
+        // If we didn't handle the key, let the parent class handle it
+        return super.onKeyDown(keyCode, event);
     }
 
     // =========================================================================
@@ -328,6 +414,8 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Attaches a touch listener to the custom progress bar to enable seeking via dragging.
+     * INTERACTS WITH: ExoPlayer (player), ProgressBar (progressBar)
+     * USED FOR: Touch-based seeking on mobile devices
      */
     private void setupProgressBarSeeking() {
         progressBar.setOnTouchListener((v, event) -> {
@@ -365,6 +453,39 @@ public class MainActivity extends AppCompatActivity {
                     
                 default:
                     return false;
+            }
+        });
+    }
+    
+    /**
+     * CRITICAL FOR TV/FIRESTICK REMOTE CONTROL SUPPORT
+     * Sets up focus change listener on ProgressBar for D-pad seeking visual feedback.
+     * 
+     * REQUIRED FOR: FireStick and Android TV remote control - provides visual indication when ProgressBar is focused
+     * INTERACTS WITH: ProgressBar (progressBar) in activity_main.xml
+     * 
+     * BEHAVIOR:
+     * When ProgressBar gains focus via D-pad navigation, it increases in height to provide visual feedback.
+     * When ProgressBar loses focus, it returns to normal height.
+     * This helps users know when they can use LEFT/RIGHT D-pad buttons to seek.
+     */
+    private void setupProgressBarDpadSeeking() {
+        progressBar.setOnFocusChangeListener((v, hasFocus) -> {
+            if (hasFocus) {
+                // Increase height when focused to show it's selected for D-pad seeking
+                android.view.ViewGroup.LayoutParams params = progressBar.getLayoutParams();
+                params.height = (int) (8 * getResources().getDisplayMetrics().density); // 8dp when focused
+                progressBar.setLayoutParams(params);
+                // Show controls when ProgressBar is focused
+                if (customControls.getVisibility() != View.VISIBLE) {
+                    toggleControls();
+                }
+                resetControlsTimeout();
+            } else {
+                // Return to normal height when not focused
+                android.view.ViewGroup.LayoutParams params = progressBar.getLayoutParams();
+                params.height = (int) (4 * getResources().getDisplayMetrics().density); // 4dp normal
+                progressBar.setLayoutParams(params);
             }
         });
     }
