@@ -81,8 +81,8 @@ public class ChapterStrategy implements SkipDetectionStrategy {
         try {
             String chapterId = chapter.chapterId != null ? chapter.chapterId.toLowerCase() : "";
             
-            long startMs = chapter.startTimeUs / 1000;
-            long endMs = chapter.endTimeUs / 1000;
+            long startMs = chapter.startTimeMs;
+            long endMs = chapter.endTimeMs;
             int startSec = (int) (startMs / 1000);
             int endSec = (int) (endMs / 1000);
             
