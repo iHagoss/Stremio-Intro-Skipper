@@ -31,24 +31,32 @@ android {
     }
 }
 
+repositories {
+    google()
+    mavenCentral()
+}
+
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'com.google.android.material:material:1.9.0'
-    implementation 'androidx.leanback:leanback:1.1.1'
+    
+    // Use officially released stable versions that exist in repos
+    implementation 'androidx.leanback:leanback:1.1.0-rc02' // fallback to latest available release candidate
     implementation 'androidx.preference:preference:1.2.1'
     
-    implementation 'androidx.media3:media3-exoplayer:1.3.1'
-    implementation 'androidx.media3:media3-ui:1.3.1'
-    implementation 'androidx.media3:media3-common:1.3.1'
-    implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.3.1'
-    implementation 'androidx.media3:media3-container:1.3.1'
-    implementation 'androidx.media3:media3-session:1.3.1'
-    implementation 'androidx.media3:media3-exoplayer-dash:1.3.1'
-    implementation 'androidx.media3:media3-datasource-okhttp:1.3.1'
-    implementation 'androidx.media3:media3-ui-compose:1.3.1'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.3.1'
-    implementation 'androidx.media3:media3-exoplayer-workmanager:1.3.1'
+    // Use media3 stable 1.3.0 (1.3.1 not available publicly yet)
+    implementation 'androidx.media3:media3-exoplayer:1.3.0'
+    implementation 'androidx.media3:media3-ui:1.3.0'
+    implementation 'androidx.media3:media3-common:1.3.0'
+    implementation 'androidx.media3:media3-exoplayer-smoothstreaming:1.3.0'
+    implementation 'androidx.media3:media3-container:1.3.0'
+    implementation 'androidx.media3:media3-session:1.3.0'
+    implementation 'androidx.media3:media3-exoplayer-dash:1.3.0'
+    implementation 'androidx.media3:media3-datasource-okhttp:1.3.0'
+    implementation 'androidx.media3:media3-ui-compose:1.3.0'
+    implementation 'androidx.media3:media3-exoplayer-hls:1.3.0'
+    implementation 'androidx.media3:media3-exoplayer-workmanager:1.3.0'
     
     implementation 'com.squareup.okhttp3:okhttp:4.11.0'
     implementation 'com.google.code.gson:gson:2.10.1'
