@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory android:title="@string/api_keys_category">
+        <EditTextPreference
+            android:key="trakt_api_key"
+            android:title="@string/trakt_api_key"
+            android:inputType="text"
+            android:selectAllOnFocus="true" />
+
+        <EditTextPreference
+            android:key="tmdb_api_key"
+            android:title="@string/tmdb_api_key"
+            android:inputType="text"
+            android:selectAllOnFocus="true" />
+
+        <EditTextPreference
+            android:key="tvdb_api_key"
+            android:title="@string/tvdb_api_key"
+            android:inputType="text"
+            android:selectAllOnFocus="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/debrid_category">
+        <EditTextPreference
+            android:key="real_debrid_key"
+            android:title="@string/real_debrid_key"
+            android:inputType="text"
+            android:selectAllOnFocus="true" />
+
+        <EditTextPreference
+            android:key="torbox_key"
+            android:title="@string/torbox_key"
+            android:inputType="text"
+            android:selectAllOnFocus="true" />
+
+        <EditTextPreference
+            android:key="all_debrid_key"
+            android:title="@string/all_debrid_key"
+            android:inputType="text"
+            android:selectAllOnFocus="true" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/skip_timings_category">
+        <EditTextPreference
+            android:key="intro_start"
+            android:title="@string/intro_start"
+            android:inputType="number"
+            android:defaultValue="0" />
+
+        <EditTextPreference
+            android:key="intro_end"
+            android:title="@string/intro_end"
+            android:inputType="number"
+            android:defaultValue="0" />
+
+        <EditTextPreference
+            android:key="recap_start"
+            android:title="@string/recap_start"
+            android:inputType="number"
+            android:defaultValue="0" />
+
+        <EditTextPreference
+            android:key="recap_end"
+            android:title="@string/recap_end"
+            android:inputType="number"
+            android:defaultValue="0" />
+
+        <EditTextPreference
+            android:key="credits_start"
+            android:title="@string/credits_start"
+            android:inputType="number"
+            android:defaultValue="0" />
+
+        <EditTextPreference
+            android:key="credits_end"
+            android:title="@string/credits_end"
+            android:inputType="number"
+            android:defaultValue="0" />
+
+        <EditTextPreference
+            android:key="next_ep_start"
+            android:title="@string/next_ep_start"
+            android:inputType="number"
+            android:defaultValue="0" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/skip_settings_category">
+        <SwitchPreference
+            android:key="auto_skip_intro"
+            android:title="@string/auto_skip_intro"
+            android:defaultValue="false" />
+
+        <SwitchPreference
+            android:key="auto_skip_recap"
+            android:title="@string/auto_skip_recap"
+            android:defaultValue="false" />
+
+        <SwitchPreference
+            android:key="auto_skip_credits"
+            android:title="@string/auto_skip_credits"
+            android:defaultValue="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/delay_category">
+        <EditTextPreference
+            android:key="audio_delay_ms"
+            android:title="@string/audio_delay_ms"
+            android:inputType="numberSigned"
+            android:defaultValue="0" />
+
+        <EditTextPreference
+            android:key="subtitle_delay_ms"
+            android:title="@string/subtitle_delay_ms"
+            android:inputType="numberSigned"
+            android:defaultValue="0" />
+    </PreferenceCategory>
+
+</PreferenceScreen>
