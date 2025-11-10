@@ -34,14 +34,6 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-// Smart Skip Detection imports
-import com.tvplayer.app.skipdetection.SmartSkipManager;
-import com.tvplayer.app.skipdetection.MediaIdentifier;
-import com.tvplayer.app.skipdetection.SkipDetectionCallback;
-import com.tvplayer.app.skipdetection.SkipDetectionResult;
-import com.tvplayer.app.skipdetection.SkipDetectionResult.SkipSegment;
-import com.tvplayer.app.skipdetection.SkipDetectionResult.SkipSegmentType;
-
 /**
  * MainActivity: The primary activity responsible for video playback.
  */
@@ -55,9 +47,7 @@ public class MainActivity extends AppCompatActivity {
     // --- Helper/Model Classes ---
     // NOTE: Using full inner class implementations below to avoid "placeholder" issues
     private PreferencesHelper prefsHelper; 
-    private SkipMarkers skipMarkers;
-    private SmartSkipManager smartSkipManager;
-    private com.tvplayer.app.skipdetection.strategies.ChapterStrategy chapterStrategy; 
+    private SkipMarkers skipMarkers; 
 
     // --- Time/Progress UI Components ---
     private TextView currentTimeOfDay;
@@ -91,13 +81,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean autoSkippedCredits = false;
 
     // --- For Resumption/Hand-off Fix (Stremio) ---
-    private long lastPositionMs = 0;
-    private String currentVideoUrl = null; // Track current video URL to detect media changes
-    
-    // --- Smart Skip Detection State ---
-    private String currentMediaIdentifierKey = null;
-    private boolean smartDetectionCompleted = false;
-    private boolean smartDetectionInProgress = false; 
+    private long lastPositionMs = 0; 
 
     private static final int CONTROLS_TIMEOUT = 5000; // 5 seconds
 
@@ -125,14 +109,12 @@ public class MainActivity extends AppCompatActivity {
         // --- Initialize Helper Classes (Using inner class for completion) ---
         prefsHelper = new PreferencesHelper(this);
         skipMarkers = new SkipMarkers();
-        smartSkipManager = new SmartSkipManager(this, prefsHelper);
         loadSkipMarkersFromPreferences(); 
         // -------------------------------------------------------------------
 
-        // Load last known position and current URL from saved instance state
+        // Load last known position from saved instance state
         if (savedInstanceState != null) {
             lastPositionMs = savedInstanceState.getLong("lastPositionMs", 0);
-            currentVideoUrl = savedInstanceState.getString("currentVideoUrl", null);
         }
 
         initializeViews();
@@ -151,7 +133,6 @@ public class MainActivity extends AppCompatActivity {
         } else {
             outState.putLong("lastPositionMs", lastPositionMs);
         }
-        outState.putString("currentVideoUrl", currentVideoUrl);
     }
 
     @Override
@@ -177,10 +158,6 @@ public class MainActivity extends AppCompatActivity {
             player.release();
             player = null; 
         }
-        
-        currentMediaIdentifierKey = null;
-        smartDetectionCompleted = false;
-        smartDetectionInProgress = false;
 
         setupPlayer();
         handleIntent(intent);
@@ -210,9 +187,6 @@ public class MainActivity extends AppCompatActivity {
         }
         if (scrubHandler != null) {
             scrubHandler.removeCallbacksAndMessages(null);
-        }
-        if (smartSkipManager != null) {
-            smartSkipManager.shutdown();
         }
         if (player != null) {
             player.release();
@@ -259,14 +233,6 @@ public class MainActivity extends AppCompatActivity {
     private void setupPlayer() {
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
-        
-        if (chapterStrategy == null) {
-            chapterStrategy = new com.tvplayer.app.skipdetection.strategies.ChapterStrategy(player);
-        } else {
-            chapterStrategy.rebindToPlayer(player);
-        }
-        smartSkipManager.addChapterStrategy(chapterStrategy);
-        
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -275,8 +241,6 @@ public class MainActivity extends AppCompatActivity {
                     updateCreditsMarker(); 
                     updateNextEpisodeMarker(); 
                     applyAudioSubtitleDelays(); 
-                    
-                    updateHandler.postDelayed(() -> attemptSmartSkipDetection(), 2000);
 
                     // FIX: Seek to the last known position on STATE_READY
                     if (lastPositionMs > 0) {
@@ -302,8 +266,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void handleIntent(Intent intent) {
         String videoUrl = null;
-        long intentPosition = 0;
-        
         if (intent != null) {
             Uri data = intent.getData();
             if (data != null) {
@@ -313,45 +275,13 @@ public class MainActivity extends AppCompatActivity {
             } else if (intent.hasExtra("uri")) {
                 videoUrl = intent.getStringExtra("uri");
             }
-            
-            // Extract playback position from external apps (Stremio, VLC, etc.)
-            if (intent.hasExtra("position")) {
-                intentPosition = intent.getLongExtra("position", 0);
-                android.util.Log.d("PlayerResume", "Intent position from external app: " + intentPosition + "ms");
-            }
         }
 
         if (videoUrl != null && (videoUrl.startsWith("http://") || videoUrl.startsWith("https://"))) {
-            // Check if this is new media (different URL) or resuming existing media
-            boolean isNewMedia = !videoUrl.equals(currentVideoUrl);
-            
             MediaItem mediaItem = MediaItem.fromUri(videoUrl);
             player.setMediaItem(mediaItem);
             player.prepare(); 
             player.setPlayWhenReady(true);
-            
-            // Update current URL tracking
-            currentVideoUrl = videoUrl;
-            
-            // CRITICAL: Only reset position for NEW media (different URL)
-            // Preserve lastPositionMs for activity recreation with same media
-            if (isNewMedia) {
-                if (intentPosition > 0) {
-                    lastPositionMs = intentPosition;
-                    android.util.Log.d("PlayerResume", "New media with intent position: " + intentPosition + "ms");
-                } else {
-                    lastPositionMs = 0;
-                    android.util.Log.d("PlayerResume", "New media, starting from beginning");
-                }
-            } else {
-                // Same media - use intent position if provided, otherwise keep existing lastPositionMs
-                if (intentPosition > 0) {
-                    lastPositionMs = intentPosition;
-                    android.util.Log.d("PlayerResume", "Same media, using intent position: " + intentPosition + "ms");
-                } else {
-                    android.util.Log.d("PlayerResume", "Same media, preserving position: " + lastPositionMs + "ms");
-                }
-            }
         } else if (player == null || player.getMediaItemCount() == 0) {
             // Note: R.string.error_no_url must be defined
             // Toast.makeText(this, R.string.error_no_url, Toast.LENGTH_LONG).show();
@@ -363,101 +293,6 @@ public class MainActivity extends AppCompatActivity {
         skipMarkers.setIntro(prefsHelper.getIntroStart(), prefsHelper.getIntroEnd());
         skipMarkers.setRecap(prefsHelper.getRecapStart(), prefsHelper.getRecapEnd());
         skipMarkers.setCredits(prefsHelper.getCreditsStart(), 0);
-    }
-    
-    private void attemptSmartSkipDetection() {
-        if (player == null || smartSkipManager == null) {
-            return;
-        }
-        
-        long durationSeconds = player.getDuration() / 1000;
-        if (durationSeconds <= 0) {
-            return;
-        }
-        
-        Intent intent = getIntent();
-        String title = null;
-        String showName = null;
-        Integer season = null;
-        Integer episode = null;
-        String imdbId = null;
-        
-        if (intent != null) {
-            title = intent.getStringExtra("title");
-            showName = intent.getStringExtra("showName");
-            if (intent.hasExtra("season")) {
-                season = intent.getIntExtra("season", -1);
-                if (season == -1) season = null;
-            }
-            if (intent.hasExtra("episode")) {
-                episode = intent.getIntExtra("episode", -1);
-                if (episode == -1) episode = null;
-            }
-            imdbId = intent.getStringExtra("imdbId");
-        }
-        
-        MediaIdentifier mediaIdentifier = new MediaIdentifier.Builder()
-            .setTitle(title != null ? title : "Unknown")
-            .setShowName(showName)
-            .setSeasonNumber(season)
-            .setEpisodeNumber(episode)
-            .setRuntimeSeconds(durationSeconds)
-            .setImdbId(imdbId)
-            .build();
-        
-        String mediaKey = mediaIdentifier.getCacheKey();
-        
-        if (mediaKey.equals(currentMediaIdentifierKey) && (smartDetectionCompleted || smartDetectionInProgress)) {
-            android.util.Log.d("SmartSkipDetection", "Skipping duplicate/in-progress detection for: " + mediaKey);
-            return;
-        }
-        
-        currentMediaIdentifierKey = mediaKey;
-        smartDetectionCompleted = false;
-        smartDetectionInProgress = true;
-        
-        android.util.Log.d("SmartSkipDetection", "Attempting detection for: " + mediaKey);
-        
-        smartSkipManager.detectSkipMarkers(mediaIdentifier, new SkipDetectionCallback() {
-            @Override
-            public void onDetectionComplete(SkipDetectionResult result) {
-                smartDetectionInProgress = false;
-                smartDetectionCompleted = true;
-                
-                if (result.isSuccess()) {
-                    applyDetectedSkipMarkers(result);
-                    android.util.Log.d("SmartSkipDetection", "Applied markers from: " + result.getSource().name());
-                } else {
-                    android.util.Log.d("SmartSkipDetection", "Detection failed, using manual preferences");
-                }
-            }
-            
-            @Override
-            public void onDetectionFailed(String errorMessage) {
-                smartDetectionInProgress = false;
-                smartDetectionCompleted = true;
-                android.util.Log.e("SmartSkipDetection", "Detection failed: " + errorMessage);
-            }
-        });
-    }
-    
-    private void applyDetectedSkipMarkers(SkipDetectionResult result) {
-        SkipSegment intro = result.getSegmentByType(SkipSegmentType.INTRO);
-        if (intro != null && intro.isValid()) {
-            skipMarkers.setIntro(intro.startSeconds, intro.endSeconds);
-        }
-        
-        SkipSegment recap = result.getSegmentByType(SkipSegmentType.RECAP);
-        if (recap != null && recap.isValid()) {
-            skipMarkers.setRecap(recap.startSeconds, recap.endSeconds);
-        }
-        
-        SkipSegment credits = result.getSegmentByType(SkipSegmentType.CREDITS);
-        if (credits != null && credits.isValid()) {
-            skipMarkers.setCredits(credits.startSeconds, credits.endSeconds);
-        }
-        
-        resetAutoSkipFlags();
     }
 
     private void updateCreditsMarker() {
@@ -618,8 +453,9 @@ public class MainActivity extends AppCompatActivity {
         });
 
         btnSettings.setOnClickListener(v -> { 
-            Intent intent = new Intent(this, SettingsActivity.class);
-            startActivity(intent);
+            // Note: SettingsActivity must be defined
+            // Intent intent = new Intent(this, SettingsActivity.class);
+            // startActivity(intent);
         });
 
         btnAudioDelay.setOnClickListener(v -> showAudioDelayDialog());
@@ -1048,4 +884,71 @@ public class MainActivity extends AppCompatActivity {
         return super.dispatchKeyEvent(event);
     }
 
+    // =========================================================================
+    // --- Helper/Model Classes (Required for code completeness) ---
+    // =========================================================================
+
+    /**
+     * Inner class for handling SharedPreferences.
+     */
+    public static class PreferencesHelper {
+        private final SharedPreferences prefs;
+        private static final String PREF_NAME = "TVPlayerPrefs";
+
+        public PreferencesHelper(Context context) {
+            prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+        }
+
+        // Delay settings
+        public int getAudioDelayMs() { return prefs.getInt("audio_delay", 0); }
+        public void setAudioDelayMs(int delay) { prefs.edit().putInt("audio_delay", delay).apply(); }
+        public int getSubtitleDelayMs() { return prefs.getInt("subtitle_delay", 0); }
+        public void setSubtitleDelayMs(int delay) { prefs.edit().putInt("subtitle_delay", delay).apply(); }
+
+        // Marker settings (default values are 0 for simplicity)
+        public int getIntroStart() { return prefs.getInt("intro_start", 0); }
+        public int getIntroEnd() { return prefs.getInt("intro_end", 90); }
+        public int getRecapStart() { return prefs.getInt("recap_start", 0); }
+        public int getRecapEnd() { return prefs.getInt("recap_end", 60); }
+        public int getCreditsStart() { return prefs.getInt("credits_offset", 300); } // 5 minutes from end
+        public int getNextEpisodeStart() { return prefs.getInt("next_episode_offset", 60); } // 1 minute from end
+
+        // Auto Skip settings
+        public boolean isAutoSkipIntro() { return prefs.getBoolean("auto_skip_intro", false); }
+        public boolean isAutoSkipRecap() { return prefs.getBoolean("auto_skip_recap", false); }
+        public boolean isAutoSkipCredits() { return prefs.getBoolean("auto_skip_credits", false); }
+    }
+
+    /**
+     * Inner class for managing skip markers.
+     */
+    public static class SkipMarkers {
+        public static class Marker {
+            public int start;
+            public int end;
+            public Marker(int s, int e) { start = s; end = e; }
+            public boolean isValid() { return end > start && start >= 0; }
+        }
+
+        private Marker intro = new Marker(-1, -1);
+        private Marker recap = new Marker(-1, -1);
+        private Marker credits = new Marker(-1, -1);
+        private int nextEpisodeStart = -1;
+
+        public void setIntro(int start, int end) { intro = new Marker(start, end); }
+        public Marker getIntro() { return intro; }
+        public boolean isInIntro(long currentSec) { return currentSec >= intro.start && currentSec < intro.end; }
+
+        public void setRecap(int start, int end) { recap = new Marker(start, end); }
+        public Marker getRecap() { return recap; }
+        public boolean isInRecap(long currentSec) { return currentSec >= recap.start && currentSec < recap.end; }
+
+        // Credits uses the duration for 'end'
+        public void setCredits(int start, int durationSec) { credits = new Marker(start, durationSec); }
+        public Marker getCredits() { return credits; }
+        public boolean isInCredits(long currentSec) { return credits.start > 0 && currentSec >= credits.start && currentSec < credits.end; }
+
+        public void setNextEpisodeStart(int start) { nextEpisodeStart = start; }
+        public boolean isAtNextEpisode(long currentSec) { return nextEpisodeStart > 0 && currentSec >= nextEpisodeStart; }
+    }
 }

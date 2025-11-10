@@ -16,13 +16,15 @@
     <!-- Focused state: visible white circle to show which button is selected via remote -->
     <item android:state_focused="true">
         <shape android:shape="oval">
-            <solid android:color="#66FFFFFF" />
+            <solid android:color="#AAFFFFFF" />
+            <stroke android:width="2dp" android:color="#FFFFFFFF" />
         </shape>
     </item>
     <!-- Pressed state: slightly more opaque for visual feedback on click -->
     <item android:state_pressed="true">
         <shape android:shape="oval">
-            <solid android:color="#99FFFFFF" />
+            <solid android:color="#CCFFFFFF" />
+            <stroke android:width="2dp" android:color="#FFFFFFFF" />
         </shape>
     </item>
     <!-- Default state: transparent background -->
