@@ -20,9 +20,12 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
+// # This strategy attempts to detect skip segments by querying the IntroHater community API.
+// # Interacts with: IntroHater public server over HTTP.
 public class IntroHaterStrategy implements SkipDetectionStrategy {
     
     private static final String TAG = "IntroHaterStrategy";
+    // # The community API base URL.
     private static final String API_BASE_URL = "https://introhater.com/api";
     private static final int TIMEOUT_SECONDS = 8;
     
@@ -30,6 +33,7 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
     private final Gson gson;
     
     public IntroHaterStrategy() {
+        // # HTTP client setup with a timeout for network requests.
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -38,100 +42,66 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
         this.gson = new Gson();
     }
     
+    // # Core detection logic: Constructs a URL and fetches skip segments from the API.
+    // # This implementation only uses the TMDB ID for lookup.
     @Override
     public SkipDetectionResult detect(MediaIdentifier mediaIdentifier) {
-        if (!isAvailable()) {
-            return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, "Strategy not available");
+        String tmdbId = mediaIdentifier.getTmdbId();
+        Integer season = mediaIdentifier.getSeasonNumber();
+        Integer episode = mediaIdentifier.getEpisodeNumber();
+        
+        if (tmdbId == null || tmdbId.isEmpty() || season == null || episode == null) {
+            return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, "Missing TMDB ID or episode info.");
         }
         
-        try {
-            String endpoint = buildEndpoint(mediaIdentifier);
-            if (endpoint == null) {
-                return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, "Insufficient metadata");
-            }
-            
-            Request request = new Request.Builder()
-                .url(endpoint)
-                .get()
-                .build();
-            
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, "HTTP " + response.code());
+        // # Constructs the API URL for a specific episode.
+        String url = String.format("%s/tmdb/%s/season/%d/episode/%d", API_BASE_URL, tmdbId, season, episode);
+        
+        Request request = new Request.Builder()
+            .url(url)
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (response.isSuccessful() && response.body() != null) {
+                String json = response.body().string();
+                List<SkipSegment> segments = parseResponse(json);
+                
+                if (!segments.isEmpty()) {
+                    Log.d(TAG, "IntroHater detection successful with " + segments.size() + " segments");
+                    // # Returns a high-confidence result, as community servers are usually accurate.
+                    return SkipDetectionResult.success(
+                        DetectionSource.INTROHATER_API,
+                        0.80f,
+                        segments.toArray(new SkipSegment[0])
+                    );
+                } else {
+                    return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, "API returned no skip data.");
                 }
-                
-                String body = response.body().string();
-                List<SkipSegment> segments = parseIntroHaterResponse(body);
-                
-                if (segments.isEmpty()) {
-                    return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, "No skip data found");
-                }
-                
-                return SkipDetectionResult.success(
-                    DetectionSource.INTROHATER_API,
-                    0.90f,
-                    segments.toArray(new SkipSegment[0])
-                );
+            } else {
+                return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, 
+                    "API call failed: " + response.code());
             }
-            
         } catch (Exception e) {
-            Log.e(TAG, "Error detecting with IntroHater API", e);
-            return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, e.getMessage());
+            Log.e(TAG, "Network error during IntroHater lookup", e);
+            return SkipDetectionResult.failed(DetectionSource.INTROHATER_API, "Network error: " + e.getMessage());
         }
     }
     
-    private String buildEndpoint(MediaIdentifier mediaIdentifier) {
-        if (mediaIdentifier.isTvShow() && mediaIdentifier.getShowName() != null) {
-            return String.format("%s/show/%s/season/%d/episode/%d",
-                API_BASE_URL,
-                mediaIdentifier.getShowName().replace(" ", "%20"),
-                mediaIdentifier.getSeasonNumber(),
-                mediaIdentifier.getEpisodeNumber()
-            );
-        } else if (mediaIdentifier.getImdbId() != null) {
-            return API_BASE_URL + "/imdb/" + mediaIdentifier.getImdbId();
-        }
-        return null;
-    }
-    
-    private List<SkipSegment> parseIntroHaterResponse(String json) {
+    // # Helper method to parse the JSON response from the API.
+    private List<SkipSegment> parseResponse(String json) {
         List<SkipSegment> segments = new ArrayList<>();
         
         try {
             JsonObject root = gson.fromJson(json, JsonObject.class);
             
-            if (root.has("intro")) {
-                JsonObject intro = root.getAsJsonObject("intro");
-                int start = intro.has("start") ? intro.get("start").getAsInt() : 0;
-                int end = intro.has("end") ? intro.get("end").getAsInt() : 0;
-                if (start >= 0 && end > start) {
-                    segments.add(new SkipSegment(SkipSegmentType.INTRO, start, end));
-                }
-            }
-            
-            if (root.has("recap")) {
-                JsonObject recap = root.getAsJsonObject("recap");
-                int start = recap.has("start") ? recap.get("start").getAsInt() : 0;
-                int end = recap.has("end") ? recap.get("end").getAsInt() : 0;
-                if (start >= 0 && end > start) {
-                    segments.add(new SkipSegment(SkipSegmentType.RECAP, start, end));
-                }
-            }
-            
-            if (root.has("credits") || root.has("outro")) {
-                JsonObject credits = root.has("credits") ? root.getAsJsonObject("credits") : root.getAsJsonObject("outro");
-                int start = credits.has("start") ? credits.get("start").getAsInt() : 0;
-                int end = credits.has("end") ? credits.get("end").getAsInt() : 0;
-                if (start >= 0 && end > start) {
-                    segments.add(new SkipSegment(SkipSegmentType.CREDITS, start, end));
-                }
-            }
-            
-            if (root.has("segments")) {
-                JsonArray segmentsArray = root.getAsJsonArray("segments");
+            if (root.has("segments") && root.get("segments").isJsonArray()) {
+                JsonArray segmentsArray = root.get("segments").getAsJsonArray();
+                
                 for (int i = 0; i < segmentsArray.size(); i++) {
                     JsonObject segment = segmentsArray.get(i).getAsJsonObject();
+                    // # API provides segment type (e.g., "intro", "recap")
                     String type = segment.has("type") ? segment.get("type").getAsString().toLowerCase() : "";
+                    // # API provides start/end times in seconds.
                     int start = segment.has("start") ? segment.get("start").getAsInt() : 0;
                     int end = segment.has("end") ? segment.get("end").getAsInt() : 0;
                     
@@ -161,11 +131,12 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
     
     @Override
     public boolean isAvailable() {
-        return true;
+        return true; // The API is generally always available to try.
     }
     
     @Override
     public int getPriority() {
-        return 300;
+        // # UPDATED: Set to 400 (Category 3: Community Servers).
+        return 400;
     }
 }
