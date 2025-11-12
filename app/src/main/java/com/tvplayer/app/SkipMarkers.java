@@ -3,11 +3,12 @@ package com.tvplayer.app;
 /**
  * SkipMarkers: A core data and logic class for managing video skip segments
  * (Intro, Recap, Credits) and the Next Episode button marker.
- * * Interacts with:
- * - MainActivity.java: This activity calls the 'isIn...' and 'isAt...' methods 
- * to determine when to display the skip buttons and calls the getter methods 
+ *
+ * Interacts with:
+ * - MainActivity.java: This activity calls the 'isIn...' and 'isAt...' methods
+ * to determine when to display the skip buttons and calls the getter methods
  * to determine where to seek to when a button is pressed.
- * - PreferencesHelper.java: This class is used by MainActivity to load the 
+ * - PreferencesHelper.java: This class is used by MainActivity to load the
  * start and end times for these markers from the application's preferences,
  * which are then set using the setter methods below.
  */
@@ -31,41 +32,48 @@ public class SkipMarkers {
         /**
          * Checks if the current video position is within the segment's range.
          * @param positionSeconds The current video time in seconds.
-         * @return True if the position is between start and end (inclusive).
+         * @return True if the position is between start (inclusive) and end (exclusive).
          */
         public boolean contains(long positionSeconds) {
-            return positionSeconds >= start && positionSeconds <= end;
+            return positionSeconds >= start && positionSeconds < end;
         }
-
+        
         /**
-         * Validates that the TimeRange has meaningful, non-zero data.
-         * This prevents buttons from appearing if preference values were not loaded or are default (0).
-         * @return True if start is non-negative AND end is after start.
+         * Checks if the time range is valid (start is non-negative and before end).
+         * @return True if the marker is set correctly.
          */
         public boolean isValid() {
             return start >= 0 && end > start;
         }
     }
 
-    // --- Private Marker Data Fields ---
-    
+    // --- Skip Segment Data Fields ---
     private TimeRange intro;
     private TimeRange recap;
     private TimeRange credits;
-    // Stores the calculated Next Episode marker time (seconds from video start).
-    private int nextEpisodeStart; 
+    private int nextEpisodeStart;
 
     /**
-     * Constructor: Initializes all markers to an invalid (0, 0) state.
+     * Constructor: Initializes all markers to an invalid (cleared) state.
      */
     public SkipMarkers() {
-        this.intro = new TimeRange(0, 0);
-        this.recap = new TimeRange(0, 0);
-        this.credits = new TimeRange(0, 0);
-        this.nextEpisodeStart = 0;
+        this.intro = new TimeRange(-1, -1);
+        this.recap = new TimeRange(-1, -1);
+        this.credits = new TimeRange(-1, -1);
+        this.nextEpisodeStart = -1;
     }
 
-    // --- Public Setter Methods (Used by MainActivity to populate data) ---
+    /**
+     * Clears all segment markers.
+     */
+    public void clearAll() {
+        this.intro = new TimeRange(-1, -1);
+        this.recap = new TimeRange(-1, -1);
+        this.credits = new TimeRange(-1, -1);
+        this.nextEpisodeStart = -1;
+    }
+
+    // --- Setter Methods (Called by MainActivity after loading preferences or API results) ---
 
     public void setIntro(int start, int end) {
         this.intro = new TimeRange(start, end);
@@ -82,31 +90,24 @@ public class SkipMarkers {
     public void setNextEpisodeStart(int start) {
         this.nextEpisodeStart = start;
     }
-
-    // --- Public Getter Methods (Used by MainActivity for seek actions) ---
     
-    // MainActivity uses these getters to seek to the *end* time of the segment.
-    public TimeRange getIntro() {
-        return intro;
-    }
+    // --- Getter Methods (For performing the seek in MainActivity) ---
 
-    public TimeRange getRecap() {
-        return recap;
-    }
+    public int getIntroStart() { return intro.start; }
+    public int getIntroEnd() { return intro.end; }
 
-    public TimeRange getCredits() {
-        return credits;
-    }
+    public int getRecapStart() { return recap.start; }
+    public int getRecapEnd() { return recap.end; }
+    
+    public int getCreditsStart() { return credits.start; }
+    public int getCreditsEnd() { return credits.end; }
+    
+    public int getNextEpisodeStart() { return nextEpisodeStart; }
 
-    // MainActivity uses this getter to seek to the calculated next episode time.
-    public int getNextEpisodeStart() {
-        return nextEpisodeStart;
-    }
-
-    // --- Core Logic: State Checkers (Used by MainActivity to show/hide buttons) ---
+    // --- Logic Methods (For controlling button visibility in MainActivity) ---
 
     /**
-     * Determines if the current playback time is within the Intro segment.
+     * Determines if the player is currently inside the Intro segment.
      * @param positionSeconds The current video time in seconds.
      * @return true if the button should be shown.
      */
@@ -125,7 +126,7 @@ public class SkipMarkers {
 
     /**
      * Determines if the Next Episode button should be displayed.
-     * * @param positionSeconds The current video time in seconds.
+     * @param positionSeconds The current video time in seconds.
      * @return true if the button should be shown.
      */
     public boolean isAtNextEpisode(long positionSeconds) {
