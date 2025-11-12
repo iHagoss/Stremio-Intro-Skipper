@@ -8,6 +8,8 @@ import android.util.Log;
 import androidx.media3.common.Player;
 
 import com.tvplayer.app.PreferencesHelper;
+// # Import the newly created AudioFingerprintStrategy.
+import com.tvplayer.app.skipdetection.strategies.AudioFingerprintStrategy; 
 import com.tvplayer.app.skipdetection.strategies.CacheStrategy;
 import com.tvplayer.app.skipdetection.strategies.ChapterStrategy;
 import com.tvplayer.app.skipdetection.strategies.IntroHaterStrategy;
@@ -25,158 +27,169 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+// # SmartSkipManager: Coordinates all skip detection strategies, manages execution, 
+// # prioritization, caching, and returns the best result to the main activity.
+// # Interacts with: All SkipDetectionStrategy files, MainActivity, PreferencesHelper.
 public class SmartSkipManager {
     
     private static final String TAG = "SmartSkipManager";
+    // # Maximum time (10 seconds) to wait for all asynchronous detection strategies to finish.
     private static final int DETECTION_TIMEOUT_MS = 10000;
     
     private final Context context;
     private final PreferencesHelper prefsHelper;
-    private final ExecutorService executorService;
+    // # Executor for running detection strategies off the main thread (network/disk intensive).
+    private final ExecutorService executorService; 
+    // # Handler to post results back to the main UI thread.
     private final Handler mainHandler;
     private final CacheStrategy cacheStrategy;
     private final List<SkipDetectionStrategy> strategies;
     
-    public SmartSkipManager(Context context, PreferencesHelper prefsHelper) {
+    // # Constructor: Initializes strategies and sorting logic.
+    public SmartSkipManager(Context context, PreferencesHelper prefsHelper, Player player) {
         this.context = context;
         this.prefsHelper = prefsHelper;
-        this.executorService = Executors.newFixedThreadPool(4);
+        this.executorService = Executors.newFixedThreadPool(4); // Max 4 strategies running concurrently
         this.mainHandler = new Handler(Looper.getMainLooper());
+        
+        // # Initialize CacheStrategy (used internally before other strategies run).
         this.cacheStrategy = new CacheStrategy(context);
+        
+        // # Initialize all detection strategies.
         this.strategies = new ArrayList<>();
-        initializeStrategies();
-    }
-    
-    private void initializeStrategies() {
-        strategies.add(new ManualPreferenceStrategy(prefsHelper));
-        strategies.add(new IntroHaterStrategy());
-        strategies.add(new IntroSkipperStrategy());
-        strategies.add(new MetadataHeuristicStrategy(prefsHelper));
+        // # Manual Strategy (Lowest Priority)
+        this.strategies.add(new ManualPreferenceStrategy(prefsHelper));
+        // # Community API Strategies (Medium Priority)
+        this.strategies.add(new IntroHaterStrategy());
+        this.strategies.add(new IntroSkipperStrategy());
+        // # NEW: Audio Scanning Strategy (Medium-High Priority)
+        this.strategies.add(new AudioFingerprintStrategy());
+        // # Metadata/Chapter Strategies (Highest Priority)
+        this.strategies.add(new MetadataHeuristicStrategy(prefsHelper));
+        this.strategies.add(new ChapterStrategy(player));
         
-        Collections.sort(strategies, new Comparator<SkipDetectionStrategy>() {
-            @Override
-            public int compare(SkipDetectionStrategy s1, SkipDetectionStrategy s2) {
-                return Integer.compare(s1.getPriority(), s2.getPriority());
-            }
-        });
-    }
-    
-    public void addChapterStrategy(ChapterStrategy chapterStrategy) {
-        for (int i = 0; i < strategies.size(); i++) {
-            if (strategies.get(i) instanceof ChapterStrategy) {
-                strategies.remove(i);
-                break;
-            }
+        // # Sort the strategies based on their priority score (Highest score = Highest priority).
+        // # The highest priority strategies will be at the beginning of the list.
+        Collections.sort(this.strategies, Comparator.comparingInt(SkipDetectionStrategy::getPriority).reversed());
+        
+        // # Log the final sorted order for debugging and confirmation.
+        Log.i(TAG, "SmartSkipManager initialized. Strategy Priority Order:");
+        for (int i = 0; i < this.strategies.size(); i++) {
+            SkipDetectionStrategy s = this.strategies.get(i);
+            Log.i(TAG, String.format("  #%d: %s (P=%d)", i + 1, s.getStrategyName(), s.getPriority()));
         }
-        
-        if (chapterStrategy != null) {
-            strategies.add(chapterStrategy);
-            Collections.sort(strategies, new Comparator<SkipDetectionStrategy>() {
-                @Override
-                public int compare(SkipDetectionStrategy s1, SkipDetectionStrategy s2) {
-                    return Integer.compare(s1.getPriority(), s2.getPriority());
+    }
+    
+    // # Public method to start the detection process asynchronously.
+    // # Interacts with: MediaIdentifier (input data), SkipDetectionCallback (result handler).
+    public void detectSkipSegmentsAsync(MediaIdentifier mediaIdentifier, SkipDetectionCallback callback) {
+        // # Run the entire detection logic on a background thread.
+        executorService.submit(() -> {
+            SkipDetectionResult result = detectSkipSegmentsSync(mediaIdentifier);
+            
+            // # Post the final result back to the main UI thread using the Handler.
+            mainHandler.post(() -> {
+                if (result.isSuccess()) {
+                    callback.onDetectionComplete(result);
+                } else {
+                    callback.onDetectionFailed(result.getErrorMessage());
                 }
             });
-        }
-    }
-    
-    public void detectSkipMarkers(MediaIdentifier mediaIdentifier, SkipDetectionCallback callback) {
-        SkipDetectionResult cachedResult = cacheStrategy.detect(mediaIdentifier);
-        if (cachedResult.isSuccess()) {
-            Log.d(TAG, "Using cached skip markers for: " + mediaIdentifier.getCacheKey());
-            mainHandler.post(() -> callback.onDetectionComplete(cachedResult));
-            return;
-        }
-        
-        Log.d(TAG, "Cache miss, attempting smart detection for: " + mediaIdentifier.getCacheKey());
-        executorService.execute(() -> {
-            SkipDetectionResult bestResult = runDetectionStrategies(mediaIdentifier);
-            
-            if (bestResult.isSuccess()) {
-                cacheStrategy.cacheResult(mediaIdentifier, bestResult);
-                Log.d(TAG, "Detection successful using: " + bestResult.getSource().name() + 
-                    " (confidence: " + bestResult.getConfidence() + ")");
-            } else {
-                Log.d(TAG, "All detection methods failed, using manual preferences");
-            }
-            
-            final SkipDetectionResult finalResult = bestResult;
-            mainHandler.post(() -> callback.onDetectionComplete(finalResult));
         });
     }
     
-    private SkipDetectionResult runDetectionStrategies(MediaIdentifier mediaIdentifier) {
+    // # The core, synchronous (blocking) detection logic.
+    private SkipDetectionResult detectSkipSegmentsSync(MediaIdentifier mediaIdentifier) {
+        
+        // # 1. Check Cache First (Cache is separate from the main priority list for speed).
+        SkipDetectionResult cachedResult = cacheStrategy.detect(mediaIdentifier);
+        if (cachedResult.isSuccess()) {
+            Log.i(TAG, "Cache hit: Returning result from " + cachedResult.getSource());
+            return cachedResult;
+        }
+        
+        // # Variables to hold the best successful result found and manage the async flow.
         final AtomicReference<SkipDetectionResult> bestResult = new AtomicReference<>(null);
         final AtomicBoolean completed = new AtomicBoolean(false);
-        List<Future<?>> futures = new ArrayList<>();
-        
-        for (final SkipDetectionStrategy strategy : strategies) {
+        final List<Future<?>> futures = new ArrayList<>();
+
+        // # 2. Run all strategies concurrently according to their priority.
+        for (SkipDetectionStrategy strategy : strategies) {
             if (!strategy.isAvailable()) {
-                Log.d(TAG, "Strategy not available: " + strategy.getStrategyName());
-                continue;
+                continue; // Skip strategies that are not configured or available.
             }
             
+            // # Submit each strategy to be run on the thread pool.
             Future<?> future = executorService.submit(() -> {
-                if (completed.get()) {
-                    return;
-                }
-                
                 try {
-                    Log.d(TAG, "Trying strategy: " + strategy.getStrategyName());
+                    Log.d(TAG, "Starting detection: " + strategy.getStrategyName());
                     SkipDetectionResult result = strategy.detect(mediaIdentifier);
                     
-                    if (result.isSuccess()) {
-                        synchronized (bestResult) {
-                            SkipDetectionResult current = bestResult.get();
-                            if (current == null || result.getConfidence() > current.getConfidence()) {
-                                bestResult.set(result);
-                                Log.d(TAG, "New best result from: " + strategy.getStrategyName() + 
-                                    " (confidence: " + result.getConfidence() + ")");
-                                
-                                if (result.getConfidence() >= 0.85f) {
-                                    completed.set(true);
-                                }
-                            }
+                    // # Critical Section: Only one thread can update the best result.
+                    synchronized (bestResult) {
+                        // # If a result is already found and it has a higher priority, skip.
+                        if (bestResult.get() != null && 
+                            bestResult.get().getConfidence() >= result.getConfidence()) {
+                            return; 
                         }
-                    } else {
-                        Log.d(TAG, "Strategy failed: " + strategy.getStrategyName() + 
-                            " - " + result.getErrorMessage());
+                        
+                        // # If a successful result is found, set it as the best.
+                        if (result.isSuccess()) {
+                            bestResult.set(result);
+                            // # If a very high priority result is found (e.g., Chapter/Metadata), 
+                            // # we can potentially stop other, lower-priority lookups early.
+                            if (result.getConfidence() > 0.8f) { 
+                                completed.set(true); 
+                            }
+                            Log.i(TAG, "Found best result from " + strategy.getStrategyName());
+                        }
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Error in strategy: " + strategy.getStrategyName(), e);
+                    Log.e(TAG, "Error in strategy " + strategy.getStrategyName(), e);
                 }
             });
             
             futures.add(future);
         }
         
+        // # 3. Wait for all threads/futures to complete or the timeout to expire.
         long startTime = System.currentTimeMillis();
         while (!completed.get() && 
                (System.currentTimeMillis() - startTime) < DETECTION_TIMEOUT_MS &&
                !allFuturesCompleted(futures)) {
             try {
-                Thread.sleep(100);
+                // # Wait a short period before checking again.
+                Thread.sleep(100); 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
         
+        // # 4. Cancel any remaining running threads to clean up resources.
         for (Future<?> future : futures) {
             if (!future.isDone()) {
                 future.cancel(true);
             }
         }
         
+        // # 5. Final Result Determination.
         SkipDetectionResult result = bestResult.get();
+        
+        // # If no strategy succeeded, use the Manual Preferences as a final fallback.
         if (result == null) {
             ManualPreferenceStrategy fallback = new ManualPreferenceStrategy(prefsHelper);
             result = fallback.detect(mediaIdentifier);
+            Log.w(TAG, "No segment found. Falling back to Manual Preferences.");
         }
+        
+        // # 6. Cache the best non-cache result for future playback.
+        cacheStrategy.cacheResult(mediaIdentifier, result);
         
         return result;
     }
     
+    // # Helper to check if all submitted detection tasks are finished.
     private boolean allFuturesCompleted(List<Future<?>> futures) {
         for (Future<?> future : futures) {
             if (!future.isDone()) {
@@ -186,6 +199,7 @@ public class SmartSkipManager {
         return true;
     }
     
+    // # Public methods for cache management.
     public void clearCache() {
         cacheStrategy.clearCache();
     }
@@ -194,6 +208,7 @@ public class SmartSkipManager {
         cacheStrategy.invalidateCache(mediaIdentifier);
     }
     
+    // # Clean shutdown of the thread pool.
     public void shutdown() {
         executorService.shutdown();
     }
