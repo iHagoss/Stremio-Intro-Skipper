@@ -20,10 +20,16 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
+// # This strategy uses existing Trakt/TMDB IDs to fetch metadata (like runtime) 
+// # and apply simple heuristics to guess skip points.
+// # Interacts with: PreferencesHelper (for API keys), MediaIdentifier (for IDs).
 public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     
     private static final String TAG = "MetadataHeuristicStrategy";
     private static final int TIMEOUT_SECONDS = 8;
+    
+    // # Base URL for Trakt API lookup (used to get runtime for heuristics).
+    private static final String TRAKT_API_URL = "https://api.trakt.tv"; 
     
     private final PreferencesHelper prefsHelper;
     private final OkHttpClient httpClient;
@@ -31,6 +37,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     
     public MetadataHeuristicStrategy(PreferencesHelper prefsHelper) {
         this.prefsHelper = prefsHelper;
+        // # HTTP client setup with a timeout for network requests.
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -39,87 +46,80 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
         this.gson = new Gson();
     }
     
+    // # Core detection logic: Fetches runtime and applies time-based guesswork.
     @Override
     public SkipDetectionResult detect(MediaIdentifier mediaIdentifier) {
-        if (!isAvailable()) {
-            return SkipDetectionResult.failed(DetectionSource.METADATA_HEURISTIC, "No API keys configured");
+        // # Use runtime from the media identifier first, if available.
+        long runtimeSeconds = mediaIdentifier.getRuntimeSeconds();
+        boolean isTvShow = mediaIdentifier.getSeasonNumber() != null && mediaIdentifier.getEpisodeNumber() != null;
+        
+        // # If runtime is not available, try to fetch it from Trakt using an ID.
+        if (runtimeSeconds <= 0 && isAvailable()) {
+            runtimeSeconds = fetchRuntimeFromTrakt(mediaIdentifier, isTvShow);
+        }
+        
+        // # If runtime is still not valid, the strategy cannot proceed.
+        if (runtimeSeconds <= 0) {
+            return SkipDetectionResult.failed(DetectionSource.METADATA_HEURISTIC, "No valid runtime found or fetched.");
         }
         
         List<SkipSegment> segments = new ArrayList<>();
-        long runtimeSeconds = mediaIdentifier.getRuntimeSeconds();
         
-        if (runtimeSeconds <= 0) {
-            runtimeSeconds = fetchRuntimeFromMetadata(mediaIdentifier);
-        }
-        
-        if (runtimeSeconds > 0) {
-            applyHeuristics(segments, runtimeSeconds, mediaIdentifier.isTvShow());
-        }
+        // # Apply simple rules (heuristics) based on the total length of the content.
+        applyHeuristics(segments, runtimeSeconds, isTvShow);
         
         if (segments.isEmpty()) {
-            return SkipDetectionResult.failed(DetectionSource.METADATA_HEURISTIC, "Unable to apply heuristics");
+            return SkipDetectionResult.failed(DetectionSource.METADATA_HEURISTIC, "Heuristics did not generate any skip segments.");
         }
         
+        // # Returns a result based on calculated guesses. Confidence is moderate.
         return SkipDetectionResult.success(
             DetectionSource.METADATA_HEURISTIC,
-            0.60f,
+            0.40f, 
             segments.toArray(new SkipSegment[0])
         );
     }
     
-    private long fetchRuntimeFromMetadata(MediaIdentifier mediaIdentifier) {
-        if (mediaIdentifier.getTmdbId() != null && !prefsHelper.getTmdbApiKey().isEmpty()) {
-            return fetchFromTMDB(mediaIdentifier);
-        } else if (mediaIdentifier.getTraktId() != null && !prefsHelper.getTraktApiKey().isEmpty()) {
-            return fetchFromTrakt(mediaIdentifier);
+    // # Helper to fetch media runtime from the Trakt API.
+    private long fetchRuntimeFromTrakt(MediaIdentifier mediaIdentifier, boolean isTvShow) {
+        String traktApiKey = prefsHelper.getTraktApiKey();
+        if (traktApiKey.isEmpty()) {
+            return 0; // Cannot use Trakt without a key
         }
-        return 0;
-    }
-    
-    private long fetchFromTMDB(MediaIdentifier mediaIdentifier) {
-        try {
-            String apiKey = prefsHelper.getTmdbApiKey();
-            String type = mediaIdentifier.isTvShow() ? "tv" : "movie";
-            String url = String.format("https://api.themoviedb.org/3/%s/%s?api_key=%s",
-                type, mediaIdentifier.getTmdbId(), apiKey);
-            
-            Request request = new Request.Builder().url(url).build();
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (response.isSuccessful()) {
-                    JsonObject root = gson.fromJson(response.body().string(), JsonObject.class);
-                    if (root.has("runtime")) {
-                        return root.get("runtime").getAsLong() * 60;
-                    } else if (root.has("episode_run_time")) {
-                        return root.getAsJsonArray("episode_run_time").get(0).getAsLong() * 60;
-                    }
-                }
+        
+        String url;
+        String traktId = mediaIdentifier.getTraktId();
+        
+        if (traktId != null && !traktId.isEmpty()) {
+            if (isTvShow) {
+                // # Trakt API endpoint for a specific episode.
+                url = String.format("%s/shows/%s/seasons/%d/episodes/%d?extended=full",
+                    TRAKT_API_URL, traktId, mediaIdentifier.getSeasonNumber(), mediaIdentifier.getEpisodeNumber());
+            } else {
+                // # Trakt API endpoint for a movie.
+                url = String.format("%s/movies/%s?extended=full", TRAKT_API_URL, traktId);
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Error fetching from TMDB", e);
+        } else {
+            return 0; // No ID to look up
         }
-        return 0;
-    }
-    
-    private long fetchFromTrakt(MediaIdentifier mediaIdentifier) {
-        try {
-            String apiKey = prefsHelper.getTraktApiKey();
-            String type = mediaIdentifier.isTvShow() ? "shows" : "movies";
-            String url = String.format("https://api.trakt.tv/sync/%s/%s",
-                type, mediaIdentifier.getTraktId());
-            
-            Request request = new Request.Builder()
-                .url(url)
-                .header("Content-Type", "application/json")
-                .header("trakt-api-key", apiKey)
-                .header("trakt-api-version", "2")
-                .build();
+        
+        Request request = new Request.Builder()
+            .url(url)
+            .header("Content-Type", "application/json")
+            .header("trakt-api-version", "2")
+            // # Uses the API key stored in preferences for authentication.
+            .header("trakt-api-key", traktApiKey)
+            .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (response.isSuccessful() && response.body() != null) {
+                String json = response.body().string();
+                JsonObject jsonObject = gson.fromJson(json, JsonObject.class);
                 
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (response.isSuccessful()) {
-                    JsonObject root = gson.fromJson(response.body().string(), JsonObject.class);
-                    if (root.has("runtime")) {
-                        return root.get("runtime").getAsLong() * 60;
-                    }
+                // # Trakt runtime is usually returned in minutes, convert to seconds.
+                if (jsonObject.has("runtime")) {
+                    // Runtime is returned in minutes.
+                    return jsonObject.get("runtime").getAsLong() * 60; 
                 }
             }
         } catch (Exception e) {
@@ -128,26 +128,32 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
         return 0;
     }
     
+    // # Simple, hardcoded rules to guess where segments might be based on total runtime.
     private void applyHeuristics(List<SkipSegment> segments, long runtimeSeconds, boolean isTvShow) {
         if (!isTvShow) {
-            return;
+            return; // Heuristics are generally less reliable for movies
         }
         
-        if (runtimeSeconds >= 20 * 60) {
+        if (runtimeSeconds >= 20 * 60) { // 20+ minute episode (standard)
+            // # Assume a 0-90 second intro.
             segments.add(new SkipSegment(SkipSegmentType.INTRO, 0, 90));
             
+            // # Assume credits start 180 seconds before the end.
             int creditsStart = (int) (runtimeSeconds - 180);
             if (creditsStart > 0) {
                 segments.add(new SkipSegment(SkipSegmentType.CREDITS, creditsStart, (int) runtimeSeconds));
             }
-        } else if (runtimeSeconds >= 15 * 60) {
+        } else if (runtimeSeconds >= 15 * 60) { // 15-19 minute episode (shorter)
+            // # Assume a 0-60 second intro.
             segments.add(new SkipSegment(SkipSegmentType.INTRO, 0, 60));
             
+            // # Assume credits start 120 seconds before the end.
             int creditsStart = (int) (runtimeSeconds - 120);
             if (creditsStart > 0) {
                 segments.add(new SkipSegment(SkipSegmentType.CREDITS, creditsStart, (int) runtimeSeconds));
             }
         }
+        // # Recap heuristics would be complex and are currently omitted.
     }
     
     @Override
@@ -157,6 +163,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     
     @Override
     public boolean isAvailable() {
+        // # Strategy is available if the user has provided at least one API key.
         return !prefsHelper.getTmdbApiKey().isEmpty() || 
                !prefsHelper.getTraktApiKey().isEmpty() ||
                !prefsHelper.getTvdbApiKey().isEmpty();
@@ -164,6 +171,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     
     @Override
     public int getPriority() {
-        return 600;
+        // # UPDATED: Set to 500 for the highest priority (Category 1/2: Chapter/Metadata/API Scraping).
+        return 500;
     }
 }
