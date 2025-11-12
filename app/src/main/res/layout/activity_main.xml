@@ -29,216 +29,199 @@
             android:nextFocusLeft="@id/progressBar"
             android:nextFocusRight="@id/btnSkipIntro" />
             
-        <Button android:id="@+id/btnSkipRecap" style="@style/SkipButton" android:layout_marginTop="8dp" android:text="@string/skip_recap" android:visibility="gone"
+        <Button android:id="@+id/btnSkipRecap" style="@style/SkipButton" android:text="@string/skip_recap" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipCredits"
             android:nextFocusUp="@id/btnSkipIntro"
             android:nextFocusLeft="@id/progressBar"
             android:nextFocusRight="@id/btnSkipRecap" />
 
-        <Button android:id="@+id/btnSkipCredits" style="@style/SkipButton" android:layout_marginTop="8dp" android:text="@string/skip_credits" android:visibility="gone"
+        <Button android:id="@+id/btnSkipCredits" style="@style/SkipButton" android:text="@string/skip_credits" android:visibility="gone"
             android:focusable="true" android:clickable="true"
-            android:nextFocusDown="@id/btnNextEpisode"
+            android:nextFocusDown="@id/btnSkipCancel"
             android:nextFocusUp="@id/btnSkipRecap"
             android:nextFocusLeft="@id/progressBar"
             android:nextFocusRight="@id/btnSkipCredits" />
 
-        <Button android:id="@+id/btnNextEpisode" style="@style/SkipButton" android:layout_marginTop="8dp" android:text="@string/next_episode" android:visibility="gone" 
+        <Button android:id="@+id/btnSkipCancel" style="@style/SkipButton" android:text="@string/skip_cancel" android:visibility="gone"
             android:focusable="true" android:clickable="true"
-            android:nextFocusDown="@id/progressBar"
+            android:nextFocusDown="@id/btnNextEpisode"
             android:nextFocusUp="@id/btnSkipCredits"
             android:nextFocusLeft="@id/progressBar"
+            android:nextFocusRight="@id/btnSkipCancel" />
+
+        <Button android:id="@+id/btnNextEpisode" style="@style/SkipButton" android:text="@string/next_episode" android:visibility="gone"
+            android:focusable="true" android:clickable="true"
+            android:nextFocusDown="@id/btnSkipIntro"
+            android:nextFocusUp="@id/btnSkipCancel"
+            android:nextFocusLeft="@id/progressBar"
             android:nextFocusRight="@id/btnNextEpisode" />
-    </LinearLayout>
 
-    <RelativeLayout
-        android:id="@+id/customControls"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="@color/transparent"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/currentTimeOfDay"
-            style="@style/TimeText"
-            android:layout_alignParentTop="true"
-            android:layout_alignParentStart="true"
-            android:layout_margin="16dp"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:text="3:39 PM" />
-            
-        <TextView
-            android:id="@+id/finishTime"
-            style="@style/TimeText"
-            android:layout_alignParentTop="true"
-            android:layout_alignParentEnd="true"
-            android:layout_margin="16dp"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:text="3:59 PM" />
-
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:layout_marginTop="20dp"
+            android:max="1000"
+            android:progress="0" />
 
         <LinearLayout
-            android:id="@+id/bottomControlsContainer"
+            android:id="@+id/timeInfoContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_alignParentBottom="true"
-            android:orientation="vertical"
-            android:background="@color/control_background"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:orientation="horizontal"
+            android:layout_marginTop="5dp"
+            android:gravity="end|center_vertical"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:background="@color/semi_transparent">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginBottom="12dp">
+            <TextView
+                android:id="@+id/tvElapsedTime"
+                style="@style/TimeText"
+                android:text="@string/elapsed_time"
+                android:layout_marginEnd="10dp" />
 
-                <ProgressBar
-                    android:id="@+id/progressBar"
-                    style="?android:attr/progressBarStyleHorizontal"
-                    android:layout_width="match_parent"
-                    android:layout_height="4dp"
-                    android:layout_marginBottom="4dp" 
-                    android:max="100"
-                    android:progress="0"
-                    android:progressTint="@color/colorAccent"
-                    android:secondaryProgressTint="@color/semi_transparent"
-                    android:focusable="true"
-                    android:clickable="true"
-                    android:nextFocusDown="@id/btnPlayPause"
-                    android:nextFocusUp="@id/btnNextEpisode"
-                    android:nextFocusLeft="@id/progressBar"
-                    android:nextFocusRight="@id/progressBar" />
+            <TextView
+                android:id="@+id/tvCurrentTime"
+                style="@style/TimeText.Bold"
+                android:text="00:00:00" />
+            
+            <TextView
+                android:id="@+id/tvTotalTime"
+                style="@style/TimeText"
+                android:text=" / 00:00:00"
+                android:layout_marginStart="5dp"
+                android:layout_marginEnd="10dp" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical">
-                    
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-                        <TextView android:id="@+id/elapsedTime" style="@style/TimeText" android:textSize="16sp" android:text="02:23" />
-                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text=" / " android:textColor="@android:color/white" android:textSize="16sp" />
-                        <TextView android:id="@+id/totalTime" style="@style/TimeText" android:textSize="16sp" android:text="22:35" />
-                    </LinearLayout>
-                    
-                    <Space android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"/>
-                    
-                    <TextView android:id="@+id/remainingTime" style="@style/TimeText" android:textSize="16sp" android:text="-20:11" />
-                </LinearLayout>
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+            
+            <TextView
+                android:id="@+id/tvRemainingLabel"
+                style="@style/TimeLabelText"
+                android:text="@string/remaining_time"
+                android:layout_marginEnd="10dp" />
+            
+            <TextView
+                android:id="@+id/tvRemainingTime"
+                style="@style/TimeText"
+                android:text="00:00:00"
+                android:layout_marginEnd="10dp" />
+            
+            <TextView
+                android:id="@+id/tvFinishLabel"
+                style="@style/TimeLabelText"
+                android:text="@string/finish_time"
+                android:layout_marginEnd="10dp" />
 
-            </LinearLayout>
-
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center"
-                android:layout_marginBottom="8dp"> 
-
-                <Space android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"/>
-
-                <ImageButton android:id="@+id/btnPrevious" style="@style/ControlButton.Small" android:src="@android:drawable/ic_media_previous" android:contentDescription="Previous"
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusDown="@id/btnSubtitles"
-                    android:nextFocusUp="@id/progressBar"
-                    android:nextFocusRight="@id/btnRewind"
-                    android:nextFocusLeft="@id/btnPrevious" /> <Space android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"/>
-                
-                <ImageButton android:id="@+id/btnRewind" style="@style/ControlButton.Small" android:src="@android:drawable/ic_media_rew" android:contentDescription="Rewind"
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusDown="@id/btnSettings"
-                    android:nextFocusUp="@id/progressBar"
-                    android:nextFocusLeft="@id/btnPrevious"
-                    android:nextFocusRight="@id/btnPlayPause" />
-                <Space android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"/>
-
-                <ImageButton android:id="@+id/btnPlayPause" style="@style/ControlButton" android:layout_width="45dp" android:layout_height="45dp" android:src="@android:drawable/ic_media_pause" android:contentDescription="Play/Pause"
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusDown="@id/btnPlaybackSpeed"
-                    android:nextFocusUp="@id/progressBar"
-                    android:nextFocusLeft="@id/btnRewind"
-                    android:nextFocusRight="@id/btnFastForward" />
-                <Space android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"/>
-
-                <ImageButton android:id="@+id/btnFastForward" style="@style/ControlButton.Small" android:src="@android:drawable/ic_media_ff" android:contentDescription="Fast Forward"
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusDown="@id/btnAudioDelay"
-                    android:nextFocusUp="@id/progressBar"
-                    android:nextFocusLeft="@id/btnPlayPause"
-                    android:nextFocusRight="@id/btnNext" />
-                <Space android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"/>
-                
-                <ImageButton android:id="@+id/btnNext" style="@style/ControlButton.Small" android:src="@android:drawable/ic_media_next" android:contentDescription="Next"
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusDown="@id/btnSubtitleDelay"
-                    android:nextFocusUp="@id/progressBar"
-                    android:nextFocusLeft="@id/btnFastForward" 
-                    android:nextFocusRight="@id/btnNext" /> <Space android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"/>
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/menuControlRow"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_gravity="center_horizontal"
-                android:gravity="center">
-
-                <ImageButton android:id="@+id/btnSubtitles" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_sort_by_size" android:contentDescription="@string/subtitles"
-                    android:focusable="true" android:clickable="true" 
-                    android:nextFocusUp="@id/btnPrevious"
-                    android:nextFocusRight="@id/btnSettings"
-                    android:nextFocusDown="@id/btnSubtitles"
-                    android:nextFocusLeft="@id/btnButton5" /> <ImageButton android:id="@+id/btnSettings" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_preferences" android:contentDescription="@string/settings"
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusUp="@id/btnRewind"
-                    android:nextFocusLeft="@id/btnSubtitles"
-                    android:nextFocusRight="@id/btnPlaybackSpeed"
-                    android:nextFocusDown="@id/btnSettings" />
-
-                <Space android:layout_width="10dp" android:layout_height="match_parent" />
-
-                <ImageButton android:id="@+id/btnPlaybackSpeed" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_recent_history" android:contentDescription="@string/playback_speed" 
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusUp="@id/btnPlayPause"
-                    android:nextFocusLeft="@id/btnSettings"
-                    android:nextFocusRight="@id/btnAudioDelay"
-                    android:nextFocusDown="@id/btnPlaybackSpeed" />
-                <ImageButton android:id="@+id/btnAudioDelay" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_lock_silent_mode_off" android:contentDescription="@string/audio_delay"
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusUp="@id/btnFastForward"
-                    android:nextFocusLeft="@id/btnPlaybackSpeed"
-                    android:nextFocusRight="@id/btnSubtitleDelay"
-                    android:nextFocusDown="@id/btnAudioDelay" />
-                <ImageButton android:id="@+id/btnSubtitleDelay" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_edit" android:contentDescription="@string/subtitle_delay"
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusUp="@id/btnNext"
-                    android:nextFocusLeft="@id/btnAudioDelay"
-                    android:nextFocusRight="@id/btnButton4"
-                    android:nextFocusDown="@id/btnSubtitleDelay" />
-                <ImageButton android:id="@+id/btnButton4" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_report_image" android:contentDescription="Button 4" 
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusUp="@id/btnNext"
-                    android:nextFocusLeft="@id/btnSubtitleDelay"
-                    android:nextFocusRight="@id/btnButton5"
-                    android:nextFocusDown="@id/btnButton4" />
-                <ImageButton android:id="@+id/btnButton5" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_crop" android:contentDescription="Button 5" 
-                    android:focusable="true" android:clickable="true"
-                    android:nextFocusUp="@id/btnNext"
-                    android:nextFocusLeft="@id/btnButton4"
-                    android:nextFocusRight="@id/btnSubtitles" android:nextFocusDown="@id/btnButton5" />
-
-            </LinearLayout>
+            <TextView
+                android:id="@+id/tvFinishTime"
+                style="@style/TimeText"
+                android:text="00:00" />
+            
         </LinearLayout>
-    </RelativeLayout>
+
+    </LinearLayout>
+    
+    <LinearLayout
+        android:id="@+id/customControlsOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@color/control_background"
+        android:orientation="vertical"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal">
+
+            <ImageButton android:id="@+id/btnRewind" style="@style/ControlButton" android:src="@android:drawable/ic_media_previous" android:contentDescription="@string/rewind"
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnSettings"
+                android:nextFocusLeft="@id/btnRewind"
+                android:nextFocusRight="@id/btnPlayPause"
+                android:nextFocusDown="@id/btnAudioDelay" />
+
+            <ImageButton android:id="@+id/btnPlayPause" style="@style/ControlButton" android:src="@android:drawable/ic_media_play" android:contentDescription="@string/play_pause"
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnSettings"
+                android:nextFocusLeft="@id/btnRewind"
+                android:nextFocusRight="@id/btnFastForward"
+                android:nextFocusDown="@id/btnAudioDelay" />
+
+            <ImageButton android:id="@+id/btnFastForward" style="@style/ControlButton" android:src="@android:drawable/ic_media_next" android:contentDescription="@string/fast_forward"
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnSettings"
+                android:nextFocusLeft="@id/btnPlayPause"
+                android:nextFocusRight="@id/btnFastForward"
+                android:nextFocusDown="@id/btnAudioDelay" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:layout_marginTop="10dp">
+
+            <ImageButton android:id="@+id/btnSettings" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_preferences" android:contentDescription="@string/settings"
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnPlayPause"
+                android:nextFocusLeft="@id/btnSettings"
+                android:nextFocusRight="@id/btnPlaybackSpeed"
+                android:nextFocusDown="@id/btnRewind" />
+
+            <ImageButton android:id="@+id/btnPlaybackSpeed" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_rotate" android:contentDescription="@string/playback_speed"
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnPlayPause"
+                android:nextFocusLeft="@id/btnSettings"
+                android:nextFocusRight="@id/btnSubtitles"
+                android:nextFocusDown="@id/btnRewind" />
+
+            <ImageButton android:id="@+id/btnSubtitles" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_btn_speak_now" android:contentDescription="@string/subtitles"
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnPlayPause"
+                android:nextFocusLeft="@id/btnPlaybackSpeed"
+                android:nextFocusRight="@id/btnAudioDelay"
+                android:nextFocusDown="@id/btnRewind" />
+
+            <ImageButton android:id="@+id/btnAudioDelay" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_share" android:contentDescription="@string/audio_delay"
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnFastForward"
+                android:nextFocusLeft="@id/btnSubtitles"
+                android:nextFocusRight="@id/btnSubtitleDelay"
+                android:nextFocusDown="@id/btnAudioDelay" />
+
+            <ImageButton android:id="@+id/btnSubtitleDelay" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_edit" android:contentDescription="@string/subtitle_delay"
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnFastForward"
+                android:nextFocusLeft="@id/btnAudioDelay"
+                android:nextFocusRight="@id/btnButton4"
+                android:nextFocusDown="@id/btnSubtitleDelay" />
+            
+            <ImageButton android:id="@+id/btnButton4" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_report_image" android:contentDescription="Button 4" 
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnFastForward"
+                android:nextFocusLeft="@id/btnSubtitleDelay"
+                android:nextFocusRight="@id/btnButton5"
+                android:nextFocusDown="@id/btnButton4" />
+            
+            <ImageButton android:id="@+id/btnButton5" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_crop" android:contentDescription="Button 5" 
+                android:focusable="true" android:clickable="true"
+                android:nextFocusUp="@id/btnFastForward"
+                android:nextFocusLeft="@id/btnButton4"
+                android:nextFocusRight="@id/btnSubtitles" android:nextFocusDown="@id/btnButton5" />
+
+        </LinearLayout>
+    </LinearLayout>
 </FrameLayout>
