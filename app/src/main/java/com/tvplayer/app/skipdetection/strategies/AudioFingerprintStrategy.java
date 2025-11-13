@@ -7,33 +7,39 @@ import com.tvplayer.app.skipdetection.SkipDetectionResult;
 import com.tvplayer.app.skipdetection.SkipDetectionResult.DetectionSource;
 import com.tvplayer.app.skipdetection.SkipDetectionStrategy;
 
-// # This is a placeholder strategy for detecting skip segments by scanning the audio track
-// # using audio fingerprinting/analysis (Category 4 in priority list).
-// # The actual logic for audio scanning (e.g., library implementation) is not included
-// # and would require complex native code or a separate library.
+/**
+ * AudioFingerprintStrategy (Placeholder)
+ * FUNCTION: This is a placeholder for a future strategy that would scan the audio
+ * track to detect intros/recaps (e.g., by detecting silence or repeated theme music).
+ * INTERACTS WITH: SmartSkipManager.java (which includes it in the priority list).
+ * PERSONALIZATION: This file is non-functional. The 'detect' method returns 'failed'
+ * until a real audio analysis library is implemented.
+ */
 public class AudioFingerprintStrategy implements SkipDetectionStrategy {
     
     private static final String TAG = "AudioFingerprintStrategy";
     
     public AudioFingerprintStrategy() {
-        // Initialization for audio analysis components would go here.
+        // # Initialization for audio analysis components would go here.
     }
     
-    // # Core detection logic (Placeholder): Should analyze the audio of the media item 
-    // # to find unique audio signatures that mark the start/end of segments.
+    /**
+     * Core detection logic (Placeholder).
+     * This is where audio processing would happen.
+     */
     @Override
     public SkipDetectionResult detect(MediaIdentifier mediaIdentifier) {
-        // # NOTE: The actual audio fingerprinting logic is complex and not provided.
-        // # For now, this acts as a placeholder in the priority chain.
         
-        Log.d(TAG, "Attempting audio fingerprint detection...");
+        Log.d(TAG, "Audio fingerprint detection is a placeholder and not yet implemented.");
         
-        // # A temporary log message to indicate no segments were found by this stub.
-        return SkipDetectionResult.failed(DetectionSource.AUDIO_FINGERPRINT, "Audio analysis not fully implemented/failed.");
+        // # This strategy will always fail until it is implemented.
+        return SkipDetectionResult.failed(DetectionSource.AUDIO_FINGERPRINT, "Audio analysis not implemented.");
         
-        /* // Example of a successful return structure if implemented:
-        // SkipSegment intro = new SkipSegment(SkipSegmentType.INTRO, 50, 120);
-        // return SkipDetectionResult.success(DetectionSource.AUDIO_FINGERPRINT, 0.60f, intro);
+        /* // Example of a successful return structure if it were implemented:
+        if (foundIntro) {
+             SkipSegment intro = new SkipSegment(SkipSegmentType.INTRO, 50, 120);
+             return SkipDetectionResult.success(DetectionSource.AUDIO_FINGERPRINT, 0.60f, intro);
+        }
         */
     }
     
@@ -44,13 +50,14 @@ public class AudioFingerprintStrategy implements SkipDetectionStrategy {
     
     @Override
     public boolean isAvailable() {
-        // # Returns true so it's included in the detection cycle, but the 'detect' method currently fails.
+        // # Set to true so it appears in the priority list, even though it will fail.
+        // # Set to false to disable it entirely.
         return true; 
     }
     
     @Override
     public int getPriority() {
-        // # Priority 300 (Category 4: Audio Scanning - below community servers, above manual).
+        // # FIX: Set to 300 for P1 Priority (Category 4: Audio Scanning).
         return 300;
     }
 }

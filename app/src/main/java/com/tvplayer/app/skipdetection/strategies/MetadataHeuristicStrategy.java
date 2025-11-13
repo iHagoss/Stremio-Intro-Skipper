@@ -20,9 +20,14 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-// # This strategy uses existing Trakt/TMDB IDs to fetch metadata (like runtime) 
-// # and apply simple heuristics to guess skip points.
-// # Interacts with: PreferencesHelper (for API keys), MediaIdentifier (for IDs).
+/**
+ * MetadataHeuristicStrategy
+ * FUNCTION: Uses existing Trakt/TMDB IDs to fetch metadata (like runtime) 
+ * and apply simple heuristics (guesses) to find skip points.
+ * INTERACTS WITH: PreferencesHelper.java (for API keys), MediaIdentifier.java (for IDs).
+ * PERSONALIZATION: The 'applyHeuristics' method contains the hardcoded rules.
+ * You can adjust the times (e.g., '0, 90' for intro) to be more or less aggressive.
+ */
 public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     
     private static final String TAG = "MetadataHeuristicStrategy";
@@ -37,7 +42,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     
     public MetadataHeuristicStrategy(PreferencesHelper prefsHelper) {
         this.prefsHelper = prefsHelper;
-        // # HTTP client setup with a timeout for network requests.
+        // # HTTP client setup with a reasonable timeout for network requests.
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -118,7 +123,6 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
                 
                 // # Trakt runtime is usually returned in minutes, convert to seconds.
                 if (jsonObject.has("runtime")) {
-                    // Runtime is returned in minutes.
                     return jsonObject.get("runtime").getAsLong() * 60; 
                 }
             }
@@ -134,26 +138,23 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
             return; // Heuristics are generally less reliable for movies
         }
         
-        if (runtimeSeconds >= 20 * 60) { // 20+ minute episode (standard)
+        if (runtimeSeconds >= 20 * 60) { // 20+ minute episode
             // # Assume a 0-90 second intro.
             segments.add(new SkipSegment(SkipSegmentType.INTRO, 0, 90));
-            
             // # Assume credits start 180 seconds before the end.
             int creditsStart = (int) (runtimeSeconds - 180);
             if (creditsStart > 0) {
                 segments.add(new SkipSegment(SkipSegmentType.CREDITS, creditsStart, (int) runtimeSeconds));
             }
-        } else if (runtimeSeconds >= 15 * 60) { // 15-19 minute episode (shorter)
+        } else if (runtimeSeconds >= 15 * 60) { // 15-19 minute episode
             // # Assume a 0-60 second intro.
             segments.add(new SkipSegment(SkipSegmentType.INTRO, 0, 60));
-            
             // # Assume credits start 120 seconds before the end.
             int creditsStart = (int) (runtimeSeconds - 120);
             if (creditsStart > 0) {
                 segments.add(new SkipSegment(SkipSegmentType.CREDITS, creditsStart, (int) runtimeSeconds));
             }
         }
-        // # Recap heuristics would be complex and are currently omitted.
     }
     
     @Override
@@ -171,7 +172,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     
     @Override
     public int getPriority() {
-        // # UPDATED: Set to 500 for the highest priority (Category 1/2: Chapter/Metadata/API Scraping).
+        // # FIX: Set to 500 for P1 Priority (Category 1: Chapter/Metadata).
         return 500;
     }
 }

@@ -20,12 +20,16 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-// # This strategy attempts to detect skip segments by querying the Intro-Skipper community API (used by Stremio/Jellyfin).
-// # Interacts with: Intro-Skipper public server over HTTP.
+/**
+ * IntroSkipperStrategy
+ * FUNCTION: Detects skip segments by querying the Intro-Skipper community API (used by Stremio/Jellyfin).
+ * INTERACTS WITH: Intro-Skipper public server (requires Internet), MediaIdentifier.java (for Trakt ID).
+ * PERSONALIZATION: The STREMIO_API_URL can be changed to a different mirror or custom endpoint.
+ */
 public class IntroSkipperStrategy implements SkipDetectionStrategy {
     
     private static final String TAG = "IntroSkipperStrategy";
-    // # The community API base URL. This is a proxy/mirror of the official service.
+    // # This is a proxy/mirror of the official service.
     private static final String STREMIO_API_URL = "https://busy-jacinta-shugi-c2885b2e.koyeb.app";
     private static final int TIMEOUT_SECONDS = 8;
     
@@ -50,7 +54,6 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
     }
     
     // # Core detection logic: Constructs a URL and fetches skip segments from the API.
-    // # This implementation requires a Trakt ID for lookup.
     @Override
     public SkipDetectionResult detect(MediaIdentifier mediaIdentifier) {
         String traktId = mediaIdentifier.getTraktId();
@@ -76,7 +79,7 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
                 
                 if (!segments.isEmpty()) {
                     Log.d(TAG, "Intro-Skipper detection successful with " + segments.size() + " segments");
-                    // # Returns a high-confidence result, as community servers are usually accurate.
+                    // # Returns a high-confidence result
                     return SkipDetectionResult.success(
                         DetectionSource.INTRO_SKIPPER_API,
                         0.75f,
@@ -98,18 +101,13 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
     // # Helper method to parse the JSON response from the API.
     private List<SkipSegment> parseResponse(String json) {
         List<SkipSegment> segments = new ArrayList<>();
-        
         try {
             JsonObject root = gson.fromJson(json, JsonObject.class);
-            
             if (root.has("skipSegments") && root.get("skipSegments").isJsonArray()) {
                 JsonArray segmentsArray = root.get("skipSegments").getAsJsonArray();
-                
                 for (int i = 0; i < segmentsArray.size(); i++) {
                     JsonObject segment = segmentsArray.get(i).getAsJsonObject();
-                    // # API provides segment type (e.g., "intro", "recap")
                     String typeStr = segment.has("skipType") ? segment.get("skipType").getAsString().toLowerCase() : "";
-                    // # API provides start/end times in seconds (as doubles, so cast to int)
                     double start = segment.has("showSkipPromptAt") ? segment.get("showSkipPromptAt").getAsDouble() : 0;
                     double end = segment.has("hideSkipPromptAt") ? segment.get("hideSkipPromptAt").getAsDouble() : 0;
                     
@@ -124,11 +122,9 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
                     }
                 }
             }
-            
         } catch (Exception e) {
             Log.e(TAG, "Error parsing intro-skipper response", e);
         }
-        
         return segments;
     }
     
@@ -144,7 +140,7 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
     
     @Override
     public int getPriority() {
-        // # UPDATED: Set to 400 (Category 3: Community Servers).
+        // # FIX: Set to 400 for P1 Priority (Category 3: Community Servers).
         return 400;
     }
 }

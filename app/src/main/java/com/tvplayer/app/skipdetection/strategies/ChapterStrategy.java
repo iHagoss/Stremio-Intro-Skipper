@@ -18,8 +18,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-// # This strategy attempts to detect skip segments based on Chapter Markers 
-// # (like ID3/EMSG metadata) embedded directly in the media file.
+/**
+ * ChapterStrategy
+ * FUNCTION: Detects skip segments by listening for embedded Chapter markers (e.g., ID3 tags)
+ * in the media stream. This is a very reliable, high-priority source.
+ * INTERACTS WITH: SmartSkipManager.java (which calls it), Player (Media3) (which it listens to).
+ * PERSONALIZATION: The 'title.toLowerCase().contains(...)' logic can be expanded
+ * to support more chapter names (e.g., "opening", "ending", "previously on").
+ */
 public class ChapterStrategy implements SkipDetectionStrategy {
     
     private static final String TAG = "ChapterStrategy";
@@ -27,57 +33,59 @@ public class ChapterStrategy implements SkipDetectionStrategy {
     private final List<ChapterData> capturedChapters = new CopyOnWriteArrayList<>();
     private Player.Listener metadataListener;
     
-    // # Constructor: Initialises the player and sets up the metadata listener.
-    // # Interacts with: Player (ExoPlayer/Media3)
-    public ChapterStrategy(Player player) {
-        rebindToPlayer(player);
+    /**
+     * FIX: Constructor is now empty. The player is provided later via rebindToPlayer
+     * to avoid the circular dependency / startup order bug.
+     */
+    public ChapterStrategy() {
+        // Player is not available at construction time
     }
     
-    // # Rebinds the strategy to a new player instance and clears old chapter data.
+    /**
+     * FIX: This method is called by SmartSkipManager once the player is ready.
+     * It binds this strategy to the active player instance.
+     * @param player The ExoPlayer/Media3 instance.
+     */
     public void rebindToPlayer(Player player) {
-        this.player = player;
-        capturedChapters.clear();
-        setupMetadataListener();
-    }
-    
-    // # Sets up a listener to capture metadata (like ChapterFrame) as the video loads/plays.
-    private void setupMetadataListener() {
-        if (player == null) return;
-        
-        try {
-            if (metadataListener != null) {
-                try {
-                    // # Safely remove the old listener if it exists before adding a new one.
-                    player.removeListener(metadataListener);
-                } catch (Exception ignore) {
-                    // Ignore, listener may not have been fully registered
-                }
+        // If we're binding to a new player, remove the listener from the old one
+        if (this.player != null && this.metadataListener != null) {
+            try {
+                this.player.removeListener(this.metadataListener);
+            } catch (Exception e) {
+                Log.w(TAG, "Failed to remove old listener, player may be released.");
             }
-        } catch (Exception e) {
-             Log.e(TAG, "Error removing old listener", e);
         }
         
-        metadataListener = new Player.Listener() {
-            @Override
-            public void onMediaMetadataChanged(androidx.media3.common.MediaMetadata mediaMetadata) {
-                // Not used for chapter metadata in this implementation
-            }
-            
+        this.player = player;
+        this.capturedChapters.clear();
+        
+        if (player != null) {
+            setupMetadataListener();
+        }
+    }
+    
+    /**
+     * Sets up the Media3 player listener to capture metadata events.
+     */
+    private void setupMetadataListener() {
+        // Create the listener
+        this.metadataListener = new Player.Listener() {
             @Override
             public void onMetadata(Metadata metadata) {
+                // # This callback fires when new metadata (like chapters) is found in the stream
                 for (int i = 0; i < metadata.length(); i++) {
                     Metadata.Entry entry = metadata.get(i);
-                    // # Checks for ID3 ChapterFrame metadata, which contains chapter start/end times.
+                    // # Check if the metadata entry is a ChapterFrame
                     if (entry instanceof ChapterFrame) {
                         ChapterFrame chapter = (ChapterFrame) entry;
-                        // # Title of the chapter often contains the type (Intro, Recap, etc.)
+                        // # The 'id' field often contains the chapter title
                         String title = chapter.id; 
                         
-                        // # ID3 times are in milliseconds, convert to seconds.
+                        // # Times are in milliseconds, convert to seconds
                         int startSec = (int) (chapter.startTimeMs / 1000);
                         int endSec = (int) (chapter.endTimeMs / 1000);
                         
-                        // # Heuristic to determine segment type from the title (e.g., 'Intro', 'Opening').
+                        // # Heuristic to determine segment type from the title (e.g., 'Intro', 'Opening')
                         if (title.toLowerCase().contains("intro") || title.toLowerCase().contains("opening")) {
                             capturedChapters.add(new ChapterData(SkipSegmentType.INTRO.name(), startSec, endSec));
                         } else if (title.toLowerCase().contains("recap")) {
@@ -90,19 +98,21 @@ public class ChapterStrategy implements SkipDetectionStrategy {
                     }
                     // # Also check for generic TextInformationFrame, sometimes used for chapter cues.
                     else if (entry instanceof TextInformationFrame) {
-                        TextInformationFrame textFrame = (TextInformationFrame) entry;
-                        // # Logic for parsing textFrame is complex and omitted, focusing on ChapterFrame for stability.
-                        Log.d(TAG, "Ignored TextInformationFrame: " + textFrame.id);
+                        // This logic is complex and not fully implemented, but shows potential
+                        Log.d(TAG, "Ignored TextInformationFrame: " + ((TextInformationFrame) entry).id);
                     }
                 }
             }
         };
         
-        player.addListener(metadataListener);
+        // # Attach the listener to the player
+        this.player.addListener(this.metadataListener);
     }
     
-    // # Core detection logic: Reads the chapters captured by the listener and converts them to segments.
-    // # Interacts with: MediaIdentifier (to check content details)
+    /**
+     * Core detection logic: Reads the chapters captured by the listener.
+     * This is called by SmartSkipManager on a background thread.
+     */
     @Override
     public SkipDetectionResult detect(MediaIdentifier mediaIdentifier) {
         if (!isAvailable()) {
@@ -112,13 +122,12 @@ public class ChapterStrategy implements SkipDetectionStrategy {
         try {
             List<SkipSegment> segments = new ArrayList<>();
             
-            // # Loop through the stored chapter data.
+            // # Loop through the stored chapter data
             for (ChapterData chapter : capturedChapters) {
-                // # Convert the stored type string back to an enum and create a SkipSegment.
+                // # Convert the stored type string back to an enum
                 String typeUpper = chapter.type.toUpperCase();
                 SkipSegmentType type = SkipSegmentType.valueOf(typeUpper);
                 
-                // # Basic validation
                 if (chapter.endSec > chapter.startSec) {
                     segments.add(new SkipSegment(type, chapter.startSec, chapter.endSec));
                 }
@@ -126,14 +135,14 @@ public class ChapterStrategy implements SkipDetectionStrategy {
             
             if (segments.isEmpty()) {
                 return SkipDetectionResult.failed(DetectionSource.CHAPTER_MARKERS, 
-                    "Captured chapters did not match skip categories");
+                    "No matching chapter segments found.");
             }
             
             Log.d(TAG, "Chapter detection successful with " + segments.size() + " segments");
-            // # Returns a high-confidence result, as chapter markers are usually very accurate.
+            // # Returns a high-confidence result, as chapter markers are very accurate
             return SkipDetectionResult.success(
                 DetectionSource.CHAPTER_MARKERS,
-                0.85f,
+                0.90f, // High confidence
                 segments.toArray(new SkipSegment[0])
             );
             
@@ -143,7 +152,9 @@ public class ChapterStrategy implements SkipDetectionStrategy {
         }
     }
     
-    // # Clears the list of captured chapters, usually called before loading a new media item.
+    /**
+     * Clears the list of captured chapters, usually called before loading a new media item.
+     */
     public void clearCapturedChapters() {
         capturedChapters.clear();
     }
@@ -161,7 +172,7 @@ public class ChapterStrategy implements SkipDetectionStrategy {
     
     @Override
     public int getPriority() {
-        // # UPDATED: Set to 500 for the highest priority (Category 1: Chapter/Metadata).
+        // # FIX: Set to 500 for P1 Priority (Category 1: Chapter/Metadata).
         return 500;
     }
     

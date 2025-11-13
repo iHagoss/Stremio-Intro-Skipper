@@ -20,8 +20,12 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
-// # This strategy attempts to detect skip segments by querying the IntroHater community API.
-// # Interacts with: IntroHater public server over HTTP.
+/**
+ * IntroHaterStrategy
+ * FUNCTION: Detects skip segments by querying the IntroHater community API.
+ * INTERACTS WITH: IntroHater public server (requires Internet), MediaIdentifier.java (for TMDB ID).
+ * PERSONALIZATION: The API_BASE_URL can be changed if the service moves.
+ */
 public class IntroHaterStrategy implements SkipDetectionStrategy {
     
     private static final String TAG = "IntroHaterStrategy";
@@ -33,7 +37,7 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
     private final Gson gson;
     
     public IntroHaterStrategy() {
-        // # HTTP client setup with a timeout for network requests.
+        // # HTTP client setup with a reasonable timeout
         this.httpClient = new OkHttpClient.Builder()
             .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -43,7 +47,6 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
     }
     
     // # Core detection logic: Constructs a URL and fetches skip segments from the API.
-    // # This implementation only uses the TMDB ID for lookup.
     @Override
     public SkipDetectionResult detect(MediaIdentifier mediaIdentifier) {
         String tmdbId = mediaIdentifier.getTmdbId();
@@ -68,7 +71,7 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
                 
                 if (!segments.isEmpty()) {
                     Log.d(TAG, "IntroHater detection successful with " + segments.size() + " segments");
-                    // # Returns a high-confidence result, as community servers are usually accurate.
+                    // # Returns a high-confidence result
                     return SkipDetectionResult.success(
                         DetectionSource.INTROHATER_API,
                         0.80f,
@@ -90,18 +93,13 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
     // # Helper method to parse the JSON response from the API.
     private List<SkipSegment> parseResponse(String json) {
         List<SkipSegment> segments = new ArrayList<>();
-        
         try {
             JsonObject root = gson.fromJson(json, JsonObject.class);
-            
             if (root.has("segments") && root.get("segments").isJsonArray()) {
                 JsonArray segmentsArray = root.get("segments").getAsJsonArray();
-                
                 for (int i = 0; i < segmentsArray.size(); i++) {
                     JsonObject segment = segmentsArray.get(i).getAsJsonObject();
-                    // # API provides segment type (e.g., "intro", "recap")
                     String type = segment.has("type") ? segment.get("type").getAsString().toLowerCase() : "";
-                    // # API provides start/end times in seconds.
                     int start = segment.has("start") ? segment.get("start").getAsInt() : 0;
                     int end = segment.has("end") ? segment.get("end").getAsInt() : 0;
                     
@@ -116,11 +114,9 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
                     }
                 }
             }
-            
         } catch (Exception e) {
             Log.e(TAG, "Error parsing IntroHater response", e);
         }
-        
         return segments;
     }
     
@@ -136,7 +132,7 @@ public class IntroHaterStrategy implements SkipDetectionStrategy {
     
     @Override
     public int getPriority() {
-        // # UPDATED: Set to 400 (Category 3: Community Servers).
+        // # FIX: Set to 400 for P1 Priority (Category 3: Community Servers).
         return 400;
     }
 }
