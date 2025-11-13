@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    strings.xml
+    FUNCTION: Defines all user-visible text strings for the application.
+    INTERACTS WITH: All layout files (activity_main.xml, etc.) and Java files (MainActivity.java, etc.).
+    PERSONALIZATION: You can change the text for any string here to translate or re-brand the app.
+-->
 <resources>
     <string name="app_name">TV Player</string>
     <string name="settings_title">Settings</string>
@@ -6,7 +12,9 @@
     <string name="skip_recap">Skip Recap</string>
     <string name="skip_credits">Skip Credits</string>
     <string name="next_episode">Next Episode</string>
-    <string name="skip_cancel">Cancel Skip</string>
+    
+    <!-- NEW: Added string for the Cancel button (Feature P2/Cancel) -->
+    <string name="skip_cancel">Cancel</string>
 
     <string name="current_time">Current Time</string>
     <string name="elapsed_time">Elapsed</string>
@@ -26,7 +34,7 @@
 
     <string name="more_options">More Options</string>
 
-
+    <!-- Preferences Strings -->
     <string name="api_keys_category">API Keys</string>
     <string name="trakt_api_key">Trakt API Key</string>
     <string name="tmdb_api_key">TMDB API Key</string>
