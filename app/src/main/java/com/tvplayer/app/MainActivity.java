@@ -1,6 +1,6 @@
 package com.tvplayer.app;
 
-// Standard Android framework imports
+// # Standard Android framework imports
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.KeyEvent; 
 import android.view.MotionEvent; 
 import android.view.View;
@@ -19,22 +20,24 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-// AndroidX/AppCompat (UI and compatibility support)
+// # AndroidX/AppCompat (UI and compatibility support)
 import androidx.appcompat.app.AppCompatActivity;
 
-// Media3/ExoPlayer imports for video playback
+// # Media3/ExoPlayer imports for video playback
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
+import androidx.media3.common.TrackSelectionParameters;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 
-// Java standard utility imports for time/date formatting
+// # Java standard utility imports for time/date formatting
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.TimeZone;
 
-// Smart Skip Detection imports
+// # Smart Skip Detection imports
 import com.tvplayer.app.skipdetection.SmartSkipManager;
 import com.tvplayer.app.skipdetection.MediaIdentifier;
 import com.tvplayer.app.skipdetection.SkipDetectionCallback;
@@ -43,47 +46,68 @@ import com.tvplayer.app.skipdetection.SkipDetectionResult.SkipSegment;
 import com.tvplayer.app.skipdetection.SkipDetectionResult.SkipSegmentType;
 import com.tvplayer.app.skipdetection.SkipDetectionResult.DetectionSource;
 
+/**
+ * MainActivity
+ * FUNCTION: The main video player activity. Manages player state, UI overlays,
+ * controls, and coordinates the skip detection logic.
+ * INTERACTS WITH:
+ * - activity_main.xml (The layout)
+ * - styles.xml / colors.xml (Styling)
+ * - PreferencesHelper.java (Loading settings)
+ * - SmartSkipManager.java (Running skip detection)
+ * - SkipMarkers.java (Holding the active skip times)
+ * - SettingsActivity.java (Launching the settings page)
+ * FIX: This class now implements SkipDetectionCallback to fix a build error.
+ */
 public class MainActivity extends AppCompatActivity implements Player.Listener, SkipDetectionCallback {
+
+    private static final String TAG = "MainActivity";
 
     // --- Core Media Player Components ---
     private PlayerView playerView;
     private ExoPlayer player;
     
     // --- UI/Control Components ---
-    private View customControls;
+    private View customControls; // FIX: ID is 'customControlsOverlay' in XML
+    private View skipButtonsOverlayContainer; // NEW: Container for all skip buttons
     private Handler controlsHandler = new Handler(Looper.getMainLooper());
     private static final int CONTROLS_TIMEOUT_MS = 5000;
-    private ImageButton btnPlayPause, btnSettings, btnAudioDelay, btnSubtitleDelay, btnSubtitles, btnSpeed, btnButton4, btnButton5;
-    private TextView tvCurrentTime, tvTotalTime, tvFinishTime, tvElapsedLabel, tvTotalLabel;
+    private ImageButton btnPlayPause, btnSettings, btnRewind, btnFastForward;
+    private TextView tvCurrentTime, tvTotalTime, tvRemainingTime, tvFinishTime;
     private ProgressBar progressBar;
     
     // --- Skip Button Components ---
     private Button btnSkipIntro, btnSkipRecap, btnSkipCredits, btnNextEpisode;
+    private Button btnSkipCancel; // NEW: Cancel Button (Feature P2/Cancel)
     
     // --- Time/Scrubbing State ---
     private Handler timeUpdateHandler = new Handler(Looper.getMainLooper());
-    private long scrubSpeed = 0; // 0 = not scrubbing, > 0 = fast forward, < 0 = rewind
-    private int scrubMultiplier = 0; // 1x, 2x, 4x, etc.
-    private final Runnable timeUpdateRunnable = new Runnable() {
-        @Override
-        public void run() {
-            updatePlayerTimeInfo();
-            // Reschedule the runnable to run again in 1 second
-            timeUpdateHandler.postDelayed(this, 1000); 
-        }
-    };
-    private final Runnable controlsTimeoutRunnable = new Runnable() {
-        @Override
-        public void run() {
-            hideControls();
-        }
-    };
-
+    private static final int SCRUB_INTERVAL_MS = 250; 
+    private static final int SCRUB_STEP_MS = 5000;
+    private int scrubMultiplier = 0; // 0 = not scrubbing
+    
     // --- Custom Logic Helpers ---
     private PreferencesHelper preferencesHelper;
     private SkipMarkers skipMarkers;
     private SmartSkipManager smartSkipManager;
 
+    // --- Time Formatting ---
+    // # Use a duration format that always shows HH:MM:SS
+    private final SimpleDateFormat durationFormat;
+    // # Use a simple format for the "Finish At" time
+    private final SimpleDateFormat finishTimeFormat = new SimpleDateFormat("h:mm a", Locale.getDefault());
+
+
+    /**
+     * Constructor
+     * FUNCTION: Initializes the time formatter for durations.
+     */
+    public MainActivity() {
+        super();
+        // # This formatter will correctly show "00:30:00" instead of "30:00"
+        durationFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+        durationFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
+    }
 
     // =========================================================================
     // LIFECYCLE METHODS
@@ -92,58 +116,73 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Ensure the screen remains on while the activity is running
+        // # Ensure the screen remains on while the activity is running
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
         
-        // Initialize helper classes
+        // # 1. Initialize helper classes
         preferencesHelper = new PreferencesHelper(this);
         skipMarkers = new SkipMarkers();
+        // # FIX: Initialize SmartSkipManager *without* the Player.
+        // # The Player object is not created yet.
         smartSkipManager = new SmartSkipManager(this, preferencesHelper);
 
-        // Map UI elements to their IDs
+        // # 2. Map UI elements to their IDs
         initializeViews();
         
-        // Set up the ExoPlayer instance
+        // # 3. Set up the ExoPlayer instance
         initializePlayer();
         
-        // Handle incoming intent (e.g., being launched from Stremio)
+        // # 4. Handle incoming intent (e.g., being launched from Stremio)
         handleIntent(getIntent());
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        setIntent(intent); // Update the activity's intent
+        setIntent(intent); // # Update the activity's intent
+        
+        // # Release the old player and create a new one for the new media
+        releasePlayer();
+        initializePlayer();
         handleIntent(intent);
     }
     
     @Override
-    protected void onStart() {
-        super.onStart();
-        // Start the time update loop
+    protected void onResume() {
+        super.onResume();
+        // # Start the time update loop
         timeUpdateHandler.post(timeUpdateRunnable);
-        // Load preferences in case they were changed in SettingsActivity
-        loadPreferences();
+        // # Load preferences in case they were changed in SettingsActivity
+        loadPreferencesAndApply();
+        // # Resume playback if the player exists
+        if (player != null) {
+            player.play();
+        }
     }
 
     @Override
-    protected void onStop() {
-        super.onStop();
-        // Stop the time update loop when the activity is not visible
+    protected void onPause() {
+        super.onPause();
+        // # Stop the time update loop when the activity is not visible
         timeUpdateHandler.removeCallbacks(timeUpdateRunnable);
+        // # Pause playback
+        if (player != null) {
+            player.pause();
+        }
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Release the player when the activity is destroyed
+        // # Release all resources
         releasePlayer();
-        // Shut down the SmartSkipManager's thread pool
-        smartSkipManager.shutdown();
-        // Remove pending callbacks
+        if (smartSkipManager != null) {
+            smartSkipManager.shutdown();
+        }
         controlsHandler.removeCallbacks(controlsTimeoutRunnable);
         timeUpdateHandler.removeCallbacks(timeUpdateRunnable);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     // =========================================================================
@@ -156,52 +195,92 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
      */
     private void initializeViews() {
         playerView = findViewById(R.id.playerView);
-        customControls = findViewById(R.id.customControlsContainer);
+        
+        // # FIX: Correct ID is 'customControlsOverlay'
+        customControls = findViewById(R.id.customControlsOverlay); 
+        skipButtonsOverlayContainer = findViewById(R.id.skipButtonsOverlayContainer);
 
-        // Time Info
+        // # Time Info
         tvCurrentTime = findViewById(R.id.tvCurrentTime);
         tvTotalTime = findViewById(R.id.tvTotalTime);
+        tvRemainingTime = findViewById(R.id.tvRemainingTime);
         tvFinishTime = findViewById(R.id.tvFinishTime);
-        tvElapsedLabel = findViewById(R.id.tvElapsedLabel);
-        tvTotalLabel = findViewById(R.id.tvTotalLabel);
         progressBar = findViewById(R.id.progressBar);
 
-        // Control Buttons
+        // # Control Buttons
         btnPlayPause = findViewById(R.id.btnPlayPause);
         btnSettings = findViewById(R.id.btnSettings);
-        btnAudioDelay = findViewById(R.id.btnAudioDelay);
-        btnSubtitleDelay = findViewById(R.id.btnSubtitleDelay);
-        btnSubtitles = findViewById(R.id.btnSubtitles);
-        btnSpeed = findViewById(R.id.btnSpeed);
-        btnButton4 = findViewById(R.id.btnButton4);
-        btnButton5 = findViewById(R.id.btnButton5);
+        btnRewind = findViewById(R.id.btnRewind);
+        btnFastForward = findViewById(R.id.btnFastForward);
 
-        // Skip Buttons
+        // # Skip Buttons
         btnSkipIntro = findViewById(R.id.btnSkipIntro);
         btnSkipRecap = findViewById(R.id.btnSkipRecap);
         btnSkipCredits = findViewById(R.id.btnSkipCredits);
         btnNextEpisode = findViewById(R.id.btnNextEpisode);
+        btnSkipCancel = findViewById(R.id.btnSkipCancel); // # NEW: Find cancel button
 
-        // Set click listeners for control buttons
-        btnPlayPause.setOnClickListener(v -> player.setPlayWhenReady(!player.getPlayWhenReady()));
-        btnSettings.setOnClickListener(v -> navigateToSettings());
+        // # Set click listeners for controls
+        setupControlListeners();
         
-        // Placeholder button listeners for features not yet implemented
-        btnAudioDelay.setOnClickListener(v -> Toast.makeText(this, "Audio Delay Pressed", Toast.LENGTH_SHORT).show());
-        btnSubtitleDelay.setOnClickListener(v -> Toast.makeText(this, "Subtitle Delay Pressed", Toast.LENGTH_SHORT).show());
-        btnSubtitles.setOnClickListener(v -> Toast.makeText(this, "Subtitles Pressed", Toast.LENGTH_SHORT).show());
-        btnSpeed.setOnClickListener(v -> Toast.makeText(this, "Playback Speed Pressed", Toast.LENGTH_SHORT).show());
-        btnButton4.setOnClickListener(v -> Toast.makeText(this, "Button 4 Pressed", Toast.LENGTH_SHORT).show());
-        btnButton5.setOnClickListener(v -> Toast.makeText(this, "Button 5 Pressed", Toast.LENGTH_SHORT).show());
+        // # Set click listeners for skip buttons
+        setupSkipButtonListeners();
+        
+        // # Hide controls initially
+        hideControls();
+    }
+    
+    /**
+     * Sets click listeners for all playback controls.
+     */
+    private void setupControlListeners() {
+        // # Player view itself toggles controls
+        playerView.setOnClickListener(v -> toggleControls());
 
-        // Set click listeners for skip buttons
+        // # Playback controls
+        btnPlayPause.setOnClickListener(v -> {
+            if (player != null) player.setPlayWhenReady(!player.getPlayWhenReady());
+            resetControlsTimeout();
+        });
+        btnRewind.setOnClickListener(v -> {
+            if (player != null) player.seekTo(player.getCurrentPosition() - 10000); // 10 sec
+            resetControlsTimeout();
+        });
+        btnFastForward.setOnClickListener(v -> {
+            if (player != null) player.seekTo(player.getCurrentPosition() + 10000); // 10 sec
+            resetControlsTimeout();
+        });
+        
+        // # Settings button
+        btnSettings.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, SettingsActivity.class);
+            startActivity(intent);
+            resetControlsTimeout();
+        });
+        
+        // # Placeholder button listeners for other controls
+        findViewById(R.id.btnAudioDelay).setOnClickListener(v -> Toast.makeText(this, "Audio Delay Not Implemented", Toast.LENGTH_SHORT).show());
+        findViewById(R.id.btnSubtitleDelay).setOnClickListener(v -> Toast.makeText(this, "Subtitle Delay Not Implemented", Toast.LENGTH_SHORT).show());
+        findViewById(R.id.btnSubtitles).setOnClickListener(v -> Toast.makeText(this, "Subtitles Not Implemented", Toast.LENGTH_SHORT).show());
+        findViewById(R.id.btnPlaybackSpeed).setOnClickListener(v -> Toast.makeText(this, "Speed Not Implemented", Toast.LENGTH_SHORT).show());
+    }
+    
+    /**
+     * Sets click listeners for all skip-related buttons.
+     */
+    private void setupSkipButtonListeners() {
         btnSkipIntro.setOnClickListener(v -> performSkip(SkipSegmentType.INTRO));
         btnSkipRecap.setOnClickListener(v -> performSkip(SkipSegmentType.RECAP));
         btnSkipCredits.setOnClickListener(v -> performSkip(SkipSegmentType.CREDITS));
-        btnNextEpisode.setOnClickListener(v -> performSkip(SkipSegmentType.NEXT_EPISODE));
+        // # FIX: Use NEXT_EPISODE enum which now exists
+        btnNextEpisode.setOnClickListener(v -> performSkip(SkipSegmentType.NEXT_EPISODE)); 
         
-        // Hide controls initially
-        hideControls();
+        // # NEW: Cancel button hides the skip overlay
+        btnSkipCancel.setOnClickListener(v -> {
+            hideSkipButtons();
+            // # Briefly show main controls so user knows action was registered
+            showControls(); 
+        });
     }
 
     /**
@@ -213,8 +292,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
             player = new ExoPlayer.Builder(this).build();
             player.addListener(this);
             playerView.setPlayer(player);
-            // Apply delay settings immediately
-            applyPlayerSettings();
         }
     }
     
@@ -235,237 +312,339 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     private void handleIntent(Intent intent) {
         Uri uri = intent.getData();
         if (uri != null && player != null) {
-            MediaItem mediaItem = new MediaItem.Builder()
-                .setUri(uri)
-                .build();
+            Log.i(TAG, "Handling new media intent: " + uri.toString());
+            MediaItem mediaItem = MediaItem.fromUri(uri);
             player.setMediaItem(mediaItem);
             player.prepare();
             player.play();
-            
-            // Start the Smart Skip detection process
-            startSkipDetection(uri);
+        } else {
+            Log.w(TAG, "Intent was null or had no data. Player not started.");
         }
     }
     
     /**
-     * Applies preference-based settings like audio/subtitle delay to the player.
+     * Loads settings from PreferencesHelper and applies them to the player.
      * Interacts with: PreferencesHelper.java
      */
-    private void applyPlayerSettings() {
+    private void loadPreferencesAndApply() {
         if (player == null) return;
         
-        // Apply audio delay (ExoPlayer expects a long in microseconds for audio delay)
-        long audioDelayUs = (long) preferencesHelper.getAudioDelayMs() * 1000;
-        player.setAudioDelay(audioDelayUs);
-
-        // Apply subtitle delay (ExoPlayer expects a long in microseconds for subtitle delay)
-        long subtitleDelayUs = (long) preferencesHelper.getSubtitleDelayMs() * 1000;
-        player.setSubtitleDelay(subtitleDelayUs);
-    }
-    
-    /**
-     * Loads the manual skip markers from preferences.
-     * Interacts with: PreferencesHelper.java, SkipMarkers.java
-     */
-    private void loadPreferences() {
-        // Load the manual preference skip points into the SkipMarkers object
+        // # Load manual markers into our SkipMarkers object
         skipMarkers.setIntro(preferencesHelper.getIntroStart(), preferencesHelper.getIntroEnd());
         skipMarkers.setRecap(preferencesHelper.getRecapStart(), preferencesHelper.getRecapEnd());
-        skipMarkers.setCredits(preferencesHelper.getCreditsStart(), preferencesHelper.getCreditsEnd());
-        skipMarkers.setNextEpisodeStart(preferencesHelper.getNextEpisodeStart());
         
-        // Re-apply player settings in case delays were changed
-        applyPlayerSettings();
+        // # Note: Credits "start" is an offset from the end
+        long durationSec = player.getDuration() / 1000;
+        int creditsOffset = preferencesHelper.getCreditsStart();
+        if (creditsOffset > 0 && durationSec > 0) {
+            skipMarkers.setCredits((int)(durationSec - creditsOffset), (int)durationSec);
+        } else {
+            // # Use the "end" field as a fallback if offset isn't set
+            skipMarkers.setCredits(0, preferencesHelper.getCreditsEnd()); 
+        }
+        
+        skipMarkers.setNextEpisodeStart(preferencesHelper.getNextEpisodeStart());
+
+        // # Apply Subtitle Delay
+        // # FIX: This is the correct Media3 API call for subtitle delay
+        try {
+            int subtitleDelayMs = preferencesHelper.getSubtitleDelayMs();
+            TrackSelectionParameters params = player.getTrackSelectionParameters()
+                .buildUpon()
+                .setSubtitleDelayMs(subtitleDelayMs)
+                .build();
+            player.setTrackSelectionParameters(params);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to apply subtitle delay", e);
+        }
+
+        // # FIX: Removed broken setAudioDelay call.
+        // # A simple audio delay is not supported by Media3's public API.
+        // # Implementing it would require a custom AudioSink, which is complex.
     }
     
     /**
      * Initiates the Smart Skip detection process for the current media.
-     * @param mediaUri The URI of the currently playing media.
+     * This is called once the player is ready.
      */
-    private void startSkipDetection(Uri mediaUri) {
-        // Placeholder for MediaIdentifier logic - In a real app, this would parse the URI or a file path 
-        // to extract a title, episode number, IMDb ID, etc., to populate the MediaIdentifier.
-        // For testing, we create a minimal identifier.
-        // We set runtimeSeconds to a placeholder value (e.g., 20 minutes) as it's required by some strategies.
+    private void startSkipDetection() {
+        if (player == null || player.getDuration() <= 0) return;
+        
+        // # FIX: Pass the (now ready) player to the manager
+        smartSkipManager.rebindPlayer(player);
+        
+        // # Create the MediaIdentifier with all known info
         MediaIdentifier mediaIdentifier = new MediaIdentifier.Builder()
-            .setTitle(mediaUri.getLastPathSegment())
-            .setRuntimeSeconds(20 * 60) 
+            .setTitle(player.getMediaMetadata().title != null ? player.getMediaMetadata().title.toString() : "Unknown")
+            .setRuntimeSeconds(player.getDuration() / 1000)
+            // # TODO: Add Trakt/TMDB/TVDB IDs here when available
+            // .setTraktId("...")
             .build();
-        
-        // Kick off the detection process on the SmartSkipManager
-        smartSkipManager.detectSkipSegments(mediaIdentifier, this);
-        
-        // Clear any old skip data until the new detection result comes back
-        skipMarkers.clearAll();
-        updateSkipButtonVisibility();
+            
+        // # Start the async detection. 'this' (MainActivity) is the callback.
+        smartSkipManager.detectSkipSegmentsAsync(mediaIdentifier, this);
     }
     
     // =========================================================================
+    // PLAYER EVENT HANDLING (Player.Listener)
+    // =========================================================================
+
+    @Override
+    public void onIsPlayingChanged(boolean isPlaying) {
+        // # Update the play/pause button icon
+        updatePlayPauseButton();
+    }
+
+    @Override
+    public void onPlaybackStateChanged(int playbackState) {
+        if (playbackState == Player.STATE_READY) {
+            Log.i(TAG, "Player is READY.");
+            // # Player is ready, load settings
+            loadPreferencesAndApply();
+            // # Start the progress bar update loop
+            timeUpdateHandler.post(timeUpdateRunnable);
+            // # Start the skip detection process
+            startSkipDetection();
+            
+        } else if (playbackState == Player.STATE_ENDED) {
+            Log.i(TAG, "Player has ENDED.");
+            finish(); // # Close the activity when the video finishes
+            
+        } else if (playbackState == Player.STATE_BUFFERING) {
+            Log.d(TAG, "Player is BUFFERING.");
+            
+        } else if (playbackState == Player.STATE_IDLE) {
+            Log.d(TAG, "Player is IDLE.");
+        }
+    }
+
+    @Override
+    public void onPlayerError(PlaybackException error) {
+        // # Shows an alert dialog on playback error
+        Log.e(TAG, "Player Error", error);
+        new AlertDialog.Builder(this)
+                .setTitle("Playback Error")
+                .setMessage(error.getMessage())
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> finish())
+                .show();
+    }
+    
+    // =========================================================================
+    // SMART SKIP CALLBACKS (SkipDetectionCallback)
+    // =========================================================================
+
+    /**
+     * Called by SmartSkipManager when a skip segment result is successfully found.
+     * This runs on the MAIN THREAD.
+     * Interacts with: SmartSkipManager.java, SkipMarkers.java
+     */
+    @Override
+    public void onDetectionComplete(SkipDetectionResult result) {
+        if (result.isSuccess()) {
+            // # FIX: Use getDisplayName() which now exists
+            Log.i(TAG, "Skip detection success from: " + result.getSource().getDisplayName());
+            Toast.makeText(this, "Skip markers found via " + result.getSource().getDisplayName(), Toast.LENGTH_SHORT).show();
+            
+            // # Clear manual markers and apply the new, better ones
+            skipMarkers.clearAll();
+            for (SkipSegment segment : result.getSegments()) {
+                if (segment.type == SkipSegmentType.INTRO) {
+                    skipMarkers.setIntro(segment.startSeconds, segment.endSeconds);
+                } else if (segment.type == SkipSegmentType.RECAP) {
+                    skipMarkers.setRecap(segment.startSeconds, segment.endSeconds);
+                } else if (segment.type == SkipSegmentType.CREDITS) {
+                    skipMarkers.setCredits(segment.startSeconds, segment.endSeconds);
+                } else if (segment.type == SkipSegmentType.NEXT_EPISODE) {
+                    skipMarkers.setNextEpisodeStart(segment.startSeconds);
+                }
+            }
+        } else {
+            // # On failure, we just keep the manual preferences that were already loaded
+            Log.w(TAG, "Skip detection failed: " + result.getErrorMessage() + ". Using manual preferences.");
+            Toast.makeText(this, "Skip detection failed. Using manual settings.", Toast.LENGTH_LONG).show();
+        }
+        
+        // # Do an initial check to show buttons if we're already in a segment
+        updateSkipButtonVisibility();
+        // # Check for auto-skip
+        performAutoSkip();
+    }
+
+    /**
+     * Called by SmartSkipManager on a critical failure.
+     * This runs on the MAIN THREAD.
+     */
+    @Override
+    public void onDetectionFailed(String errorMessage) {
+        // # On critical failure, just use manual preferences
+        Log.e(TAG, "Critical skip detection failure: " + errorMessage);
+        Toast.makeText(this, "Skip detection error. Using manual settings.", Toast.LENGTH_LONG).show();
+        loadPreferencesAndApply();
+        updateSkipButtonVisibility();
+    }
+
+    // =========================================================================
     // SKIP LOGIC & ACTIONS
     // =========================================================================
+
+    /**
+     * Hides all skip-related buttons and the overlay container.
+     * Called when a skip is performed or 'Cancel' is pressed.
+     * (Feature P2/Cancel)
+     */
+    private void hideSkipButtons() {
+        skipButtonsOverlayContainer.setVisibility(View.GONE);
+        btnSkipIntro.setVisibility(View.GONE);
+        btnSkipRecap.setVisibility(View.GONE);
+        btnSkipCredits.setVisibility(View.GONE);
+        btnNextEpisode.setVisibility(View.GONE);
+        btnSkipCancel.setVisibility(View.GONE);
+        
+        // # Return focus to the player view to prevent a "lost focus" state
+        playerView.requestFocus();
+    }
     
     /**
-     * Updates the UI to show or hide skip buttons based on the player's current position.
-     * Interacts with: SkipMarkers.java
+     * Manages visibility and focus of all skip buttons.
+     * Implements priority (Intro > Recap > Credits) (Feature P1).
+     * Implements focus-fix (Feature P2/Focus).
+     * This is called every second by the timeUpdateRunnable.
      */
     private void updateSkipButtonVisibility() {
-        if (player == null || player.getDuration() <= 0) {
-            btnSkipIntro.setVisibility(View.GONE);
-            btnSkipRecap.setVisibility(View.GONE);
-            btnSkipCredits.setVisibility(View.GONE);
-            btnNextEpisode.setVisibility(View.GONE);
-            return;
-        }
+        if (player == null || skipMarkers == null) return;
 
-        long currentPositionSeconds = player.getCurrentPosition() / 1000;
+        long currentPositionSec = player.getCurrentPosition() / 1000;
         
-        // Intro Button Logic
-        if (skipMarkers.isInIntro(currentPositionSeconds)) {
+        // # Check which segments are active
+        boolean inIntro = skipMarkers.isInIntro(currentPositionSec);
+        boolean inRecap = skipMarkers.isInRecap(currentPositionSec);
+        boolean inCredits = skipMarkers.isInCredits(currentPositionSec);
+        boolean atNextEp = skipMarkers.isAtNextEpisode(currentPositionSec);
+
+        // # Reset visibility
+        btnSkipIntro.setVisibility(View.GONE);
+        btnSkipRecap.setVisibility(View.GONE);
+        btnSkipCredits.setVisibility(View.GONE);
+        btnNextEpisode.setVisibility(View.GONE);
+
+        Button buttonToFocus = null;
+
+        // --- PRIORITY LOGIC (Feature P1) ---
+        // # Only show ONE skip button at a time, in this order:
+        if (inIntro) {
             btnSkipIntro.setVisibility(View.VISIBLE);
-        } else {
-            btnSkipIntro.setVisibility(View.GONE);
-        }
-
-        // Recap Button Logic
-        if (skipMarkers.isInRecap(currentPositionSeconds)) {
+            buttonToFocus = btnSkipIntro;
+        } else if (inRecap) {
             btnSkipRecap.setVisibility(View.VISIBLE);
-        } else {
-            btnSkipRecap.setVisibility(View.GONE);
-        }
-
-        // Credits Button Logic
-        if (skipMarkers.isInCredits(currentPositionSeconds)) {
+            buttonToFocus = btnSkipRecap;
+        } else if (inCredits) {
             btnSkipCredits.setVisibility(View.VISIBLE);
-        } else {
-            btnSkipCredits.setVisibility(View.GONE);
-        }
-
-        // Next Episode Button Logic
-        if (skipMarkers.isAtNextEpisode(currentPositionSeconds)) {
-            btnNextEpisode.setVisibility(View.VISIBLE);
-        } else {
-            btnNextEpisode.setVisibility(View.GONE);
+            buttonToFocus = btnSkipCredits;
         }
         
-        // TODO: Auto-skip logic to be implemented here
+        // # Next Episode button can show alongside Credits
+        if (atNextEp) {
+            btnNextEpisode.setVisibility(View.VISIBLE);
+            if (buttonToFocus == null) { // # Focus NextEp if no other button is active
+                buttonToFocus = btnNextEpisode;
+            }
+        }
+        
+        // --- FOCUS & CANCEL BUTTON LOGIC (Feature P2) ---
+        if (buttonToFocus != null) {
+            // # If any button is visible, show the container and the Cancel button
+            skipButtonsOverlayContainer.setVisibility(View.VISIBLE);
+            btnSkipCancel.setVisibility(View.VISIBLE);
+
+            // # FOCUS FIX: Request focus on the highest-priority button
+            // # This check prevents stealing focus if the user is using the main controls
+            if (!customControls.isShown()) {
+                buttonToFocus.requestFocus();
+            }
+        } else if (skipButtonsOverlayContainer.isShown()) {
+            // # No buttons are active, hide the container
+            hideSkipButtons();
+        }
     }
 
     /**
      * Performs a seek operation based on the requested skip type.
-     * Interacts with: SkipMarkers.java
-     * @param type The type of segment to skip (INTRO, RECAP, CREDITS, NEXT_EPISODE).
+     * @param type The type of segment to skip (INTRO, RECAP, etc.).
      */
     private void performSkip(SkipSegmentType type) {
-        long seekToMs = 0;
+        if (player == null || skipMarkers == null) return;
+        
+        long seekToMs = -1;
         String toastMessage = "";
 
         switch (type) {
             case INTRO:
-                seekToMs = skipMarkers.getIntroEnd() * 1000;
+                seekToMs = skipMarkers.getIntro().end * 1000L;
                 toastMessage = "Skipping Intro";
                 break;
             case RECAP:
-                seekToMs = skipMarkers.getRecapEnd() * 1000;
+                seekToMs = skipMarkers.getRecap().end * 1000L;
                 toastMessage = "Skipping Recap";
                 break;
             case CREDITS:
-                // For Credits, we skip to the end of the video.
+                // # For Credits, skip to the end of the video
                 seekToMs = player.getDuration(); 
                 toastMessage = "Skipping Credits";
                 break;
             case NEXT_EPISODE:
-                // For Next Episode, we seek to the start time (this will trigger player.onPlaybackStateChanged(STATE_ENDED) eventually)
-                seekToMs = skipMarkers.getNextEpisodeStart() * 1000; 
-                toastMessage = "Next Episode Marker Hit";
+                // # For Next Episode, seek to the end to trigger STATE_ENDED
+                seekToMs = player.getDuration();
+                toastMessage = "Loading Next Episode..."; // Placeholder
                 break;
             default:
                 return;
         }
 
-        if (seekToMs > 0 && seekToMs < player.getDuration()) {
+        if (seekToMs >= 0) {
             player.seekTo(seekToMs);
-            Toast.makeText(this, toastMessage, Toast.LENGTH_SHORT).show();
-            // Hide all skip buttons immediately after a successful skip
-            btnSkipIntro.setVisibility(View.GONE);
-            btnSkipRecap.setVisibility(View.GONE);
-            btnSkipCredits.setVisibility(View.GONE);
-            btnNextEpisode.setVisibility(View.GONE);
-        } else {
-            Toast.makeText(this, "Skip marker is invalid or not set.", Toast.LENGTH_SHORT).show();
+            if (!toastMessage.isEmpty()) {
+                Toast.makeText(this, toastMessage, Toast.LENGTH_SHORT).show();
+            }
+            // # Hide buttons immediately after skip
+            hideSkipButtons();
+        }
+    }
+    
+    /**
+     * Checks preferences and automatically seeks if an auto-skip is due.
+     */
+    private void performAutoSkip() {
+        if (player == null || skipMarkers == null) return;
+        
+        long currentPositionSec = player.getCurrentPosition() / 1000;
+        
+        // # Check Auto-Skip Intro
+        if (preferencesHelper.isAutoSkipIntro() && skipMarkers.isInIntro(currentPositionSec)) {
+            Log.i(TAG, "Auto-skipping Intro");
+            Toast.makeText(this, "Auto-skipping Intro", Toast.LENGTH_SHORT).show();
+            performSkip(SkipSegmentType.INTRO);
+            return; // # Only perform one auto-skip per check
+        }
+        
+        // # Check Auto-Skip Recap
+        if (preferencesHelper.isAutoSkipRecap() && skipMarkers.isInRecap(currentPositionSec)) {
+            Log.i(TAG, "Auto-skipping Recap");
+            Toast.makeText(this, "Auto-skipping Recap", Toast.LENGTH_SHORT).show();
+            performSkip(SkipSegmentType.RECAP);
+            return;
+        }
+        
+        // # Check Auto-Skip Credits
+        if (preferencesHelper.isAutoSkipCredits() && skipMarkers.isInCredits(currentPositionSec)) {
+            Log.i(TAG, "Auto-skipping Credits");
+            Toast.makeText(this, "Auto-skipping Credits", Toast.LENGTH_SHORT).show();
+            performSkip(SkipSegmentType.CREDITS);
         }
     }
     
     // =========================================================================
-    // SMART SKIP CALLBACKS (SkipDetectionCallback interface implementation)
-    // =========================================================================
-
-    /**
-     * Called by SmartSkipManager when a skip segment result is successfully found.
-     * Interacts with: SmartSkipManager.java, SkipMarkers.java
-     */
-    @Override
-    public void onDetectionComplete(SkipDetectionResult result) {
-        // Must run on the main thread to update UI
-        runOnUiThread(() -> {
-            if (result.isSuccess()) {
-                // Clear any existing markers (e.g., from manual preferences)
-                skipMarkers.clearAll();
-
-                // Apply the new segments from the successful detection result
-                for (SkipSegment segment : result.getSegments()) {
-                    if (segment.type == SkipSegmentType.INTRO) {
-                        skipMarkers.setIntro(segment.startSeconds, segment.endSeconds);
-                    } else if (segment.type == SkipSegmentType.RECAP) {
-                        skipMarkers.setRecap(segment.startSeconds, segment.endSeconds);
-                    } else if (segment.type == SkipSegmentType.CREDITS) {
-                        // NOTE: For Credits, we only care about the START time for the button logic
-                        skipMarkers.setCredits(segment.startSeconds, segment.endSeconds);
-                    }
-                }
-                
-                // Set a Next Episode marker if one of the segments is close to the end
-                if (result.hasSegmentType(SkipSegmentType.CREDITS) && player.getDuration() > 0) {
-                    // Set next episode marker to start 10 seconds before credits start
-                    SkipSegment credits = result.getSegmentByType(SkipSegmentType.CREDITS);
-                    int nextEpTime = credits.startSeconds - 10;
-                    if (nextEpTime > 0) {
-                        skipMarkers.setNextEpisodeStart(nextEpTime);
-                    }
-                }
-                
-                Toast.makeText(this, "Skip markers found via " + result.getSource().getDisplayName(), Toast.LENGTH_LONG).show();
-            } else {
-                // If external detection failed, fall back to manual preferences (already loaded in onStart)
-                loadPreferences();
-                Toast.makeText(this, "Skip detection failed. Using manual preferences.", Toast.LENGTH_LONG).show();
-            }
-        });
-    }
-
-    /**
-     * Called by SmartSkipManager on a complete detection failure.
-     */
-    @Override
-    public void onDetectionFailed(String errorMessage) {
-        // Must run on the main thread to update UI
-        runOnUiThread(() -> {
-            loadPreferences();
-            Toast.makeText(this, "Skip detection critical failure: " + errorMessage + ". Using manual preferences.", Toast.LENGTH_LONG).show();
-        });
-    }
-
-    // =========================================================================
     // UI/CONTROL METHODS
     // =========================================================================
-
-    /**
-     * Navigates to the SettingsActivity.
-     * Interacts with: SettingsActivity.java
-     */
-    private void navigateToSettings() {
-        Intent intent = new Intent(this, SettingsActivity.class);
-        startActivity(intent);
-    }
     
     /**
      * Shows the custom control overlay and starts the auto-hide timer.
@@ -473,6 +652,8 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     private void showControls() {
         if (customControls.getVisibility() != View.VISIBLE) {
             customControls.setVisibility(View.VISIBLE);
+            // # Request focus on the play button for D-pad control
+            btnPlayPause.requestFocus();
         }
         resetControlsTimeout();
     }
@@ -482,8 +663,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
      */
     private void hideControls() {
         customControls.setVisibility(View.GONE);
-        // Ensure skip buttons are always visible if they should be
-        updateSkipButtonVisibility();
     }
 
     /**
@@ -522,219 +701,162 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     // =========================================================================
 
     /**
-     * Updates all time displays (current, total, finish time) and the progress bar.
+     * Runnable that updates all time displays and the progress bar every second.
      */
-    private void updatePlayerTimeInfo() {
-        if (player == null || player.getDuration() <= 0) {
-            tvCurrentTime.setText("00:00:00");
-            tvTotalTime.setText("00:00:00");
-            tvFinishTime.setText("00:00");
-            progressBar.setProgress(0);
-            updateSkipButtonVisibility();
-            return;
-        }
-
-        long currentPosition = player.getCurrentPosition();
-        long totalDuration = player.getDuration();
-        long currentPositionSeconds = currentPosition / 1000;
-
-        // Scrubbing Mode (when FF/RW buttons are held)
-        if (scrubSpeed != 0) {
-            currentPosition += scrubSpeed;
-            currentPosition = Math.max(0, currentPosition);
-            currentPosition = Math.min(totalDuration, currentPosition);
-            
-            // Immediately seek the player to the new position if the multiplier is high
-            // to provide visual feedback and prevent large jumps after releasing the button.
-            if (Math.abs(scrubMultiplier) > 1) {
-                player.seekTo(currentPosition);
+    private final Runnable timeUpdateRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (player != null && player.getPlaybackState() == Player.STATE_READY) {
+                updateProgress();
             }
-            // Update the display for a more responsive feel, but don't seek yet.
+            // # Reschedule the runnable to run again in 1 second
+            timeUpdateHandler.postDelayed(this, 1000); 
+        }
+    };
+    
+    /**
+     * Updates all time-related UI elements.
+     */
+    private void updateProgress() {
+        if (player == null || player.getDuration() <= 0) {
+            return; // # Don't update if player isn't ready
         }
 
-        // Time Formatting
-        String currentTimeFormatted = formatTime(currentPosition);
-        String totalTimeFormatted = formatTime(totalDuration);
-        String finishTimeFormatted = formatFinishTime(totalDuration);
+        long durationMs = player.getDuration();
+        long currentPositionMs = player.getCurrentPosition();
+        long remainingMs = durationMs - currentPositionMs;
 
-        tvCurrentTime.setText(currentTimeFormatted);
-        tvTotalTime.setText(totalTimeFormatted);
-        tvFinishTime.setText(finishTimeFormatted);
-        
-        // Progress Bar Update
-        int progress = (int) ((currentPosition * 100) / totalDuration);
+        // # Update Progress Bar (max is 1000)
+        int progress = (int) ((currentPositionMs * 1000) / durationMs);
         progressBar.setProgress(progress);
+
+        // # Update time text views using the UTC-based duration formatter
+        tvCurrentTime.setText(durationFormat.format(new Date(currentPositionMs)));
+        tvTotalTime.setText(" / " + durationFormat.format(new Date(durationMs)));
+        tvRemainingTime.setText(durationFormat.format(new Date(remainingMs)));
         
-        // Skip Button Logic
+        // # Update Finish At time using the system's local time zone
+        tvFinishTime.setText(finishTimeFormat.format(new Date(System.currentTimeMillis() + remainingMs)));
+        
+        // # Update the skip buttons visibility
         updateSkipButtonVisibility();
-    }
-
-    /**
-     * Converts a millisecond duration into a HH:mm:ss format.
-     */
-    private String formatTime(long millis) {
-        long seconds = (millis / 1000) % 60;
-        long minutes = (millis / (1000 * 60)) % 60;
-        long hours = (millis / (1000 * 60 * 60));
-
-        if (hours > 0) {
-            return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds);
-        } else {
-            // Remove hours if the total duration is less than 1 hour
-            return String.format(Locale.US, "%02d:%02d", minutes, seconds);
-        }
-    }
-
-    /**
-     * Calculates and formats the finish time (system time when the video ends).
-     */
-    private String formatFinishTime(long totalDuration) {
-        long finishTimeMillis = System.currentTimeMillis() + totalDuration - player.getCurrentPosition();
-        SimpleDateFormat sdf = new SimpleDateFormat("h:mm a", Locale.US);
-        return sdf.format(new Date(finishTimeMillis));
     }
     
     // =========================================================================
     // KEY EVENT HANDLING (Custom Remote/D-Pad Logic)
     // =========================================================================
-
+    
+    /**
+     * Runnable for handling fast-scrubbing (FF/RW).
+     */
+    private final Runnable scrubRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (player != null && scrubMultiplier != 0) {
+                long seekAmount = (long) scrubMultiplier * SCRUB_STEP_MS;
+                long newPosition = player.getCurrentPosition() + seekAmount;
+                // # Clamp position to valid range
+                newPosition = Math.max(0, Math.min(newPosition, player.getDuration()));
+                player.seekTo(newPosition);
+                
+                // # Update time display immediately
+                updateProgress(); 
+                
+                // # Keep the controls visible
+                resetControlsTimeout(); 
+                
+                // # Reschedule for the next seek tick
+                timeUpdateHandler.postDelayed(this, SCRUB_INTERVAL_MS);
+            }
+        }
+    };
+    
     /**
      * Stops the fast-forward/rewind scrubbing action.
      */
     private void stopScrubbing() {
-        if (player == null || scrubSpeed == 0) return;
-        
-        // Seek to the final scrubbed position
-        long finalPosition = player.getCurrentPosition() + scrubSpeed;
-        finalPosition = Math.max(0, finalPosition);
-        finalPosition = Math.min(player.getDuration(), finalPosition);
-        player.seekTo(finalPosition);
-
-        // Reset state
-        scrubSpeed = 0;
         scrubMultiplier = 0;
-        
-        // Show controls briefly after stopping scrub
-        showControls();
+        timeUpdateHandler.removeCallbacks(scrubRunnable);
     }
 
     /**
      * Main handler for all physical key presses (Remote/D-Pad).
-     * Interacts with: Android KeyEvent system
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        // Ignore the event if the player is not ready
-        if (player == null || player.getPlaybackState() == Player.STATE_IDLE || player.getDuration() <= 0) {
-            return super.dispatchKeyEvent(event);
+        if (player == null) return super.dispatchKeyEvent(event);
+
+        // # Show controls on ANY key press if they are hidden
+        if (event.getAction() == KeyEvent.ACTION_DOWN && !customControls.isShown()) {
+            // # Don't show controls if it's a media key that works while hidden
+            if (event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE &&
+                event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY &&
+                event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PAUSE) {
+                
+                showControls();
+            }
         }
         
+        // # Reset auto-hide timer on any key press
+        resetControlsTimeout();
+
         // --- KEY DOWN ACTION HANDLING ---
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            
-            // Consume key press if we are scrubbing to prevent other actions
-            if (scrubSpeed != 0 && (event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_REWIND || event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD)) {
-                
-                // Increase multiplier only on repeat events (long press)
-                if (event.getRepeatCount() > 0) {
-                    // Start at 1x, then 2x, 4x, 8x, up to 16x
-                    scrubMultiplier = Math.min(16, (scrubMultiplier == 0 ? 1 : scrubMultiplier * 2));
-                    long baseSeek = 500L * scrubMultiplier; // 500ms is the base step
-                    scrubSpeed = (event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_REWIND) ? -baseSeek : baseSeek;
-                } else if (scrubMultiplier == 0) {
-                    // First press is 1x
-                    scrubMultiplier = 1;
-                    scrubSpeed = (event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_REWIND) ? -500L : 500L;
-                }
-                updatePlayerTimeInfo();
-                return true;
-            }
-
-            // Key press handling for non-scrubbing actions
             switch (event.getKeyCode()) {
+                // # Handle Play/Pause
+                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                case KeyEvent.KEYCODE_MEDIA_PLAY:
+                    player.play();
+                    return true;
+                case KeyEvent.KEYCODE_MEDIA_PAUSE:
+                    player.pause();
+                    return true;
+                
+                // # Handle D-Pad Center / Enter
                 case KeyEvent.KEYCODE_DPAD_CENTER:
-                    // Toggle controls on D-pad center (only on first press)
-                    if (event.getRepeatCount() == 0) {
+                case KeyEvent.KEYCODE_ENTER:
+                    if (!customControls.isShown()) {
                         toggleControls();
                         return true;
                     }
-                    return false; // Allow system to handle focus movement for repeat event
+                    // # If controls are shown, let the system handle the click
+                    return super.dispatchKeyEvent(event);
 
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    // Always show controls on D-pad movement
-                    showControls();
-                    // If controls are visible, allow default focus movement for the system
-                    if (customControls.getVisibility() == View.VISIBLE) {
-                        return super.dispatchKeyEvent(event);
-                    } else {
-                        // If controls are hidden, seek 5 seconds forward
-                        player.seekTo(player.getCurrentPosition() + 5000);
-                        return true;
-                    }
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                    showControls();
-                    if (customControls.getVisibility() == View.VISIBLE) {
-                        return super.dispatchKeyEvent(event);
-                    } else {
-                        // If controls are hidden, seek 5 seconds backward
-                        player.seekTo(player.getCurrentPosition() - 5000);
-                        return true;
-                    }
+                // # Handle FF/RW
                 case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                case KeyEvent.KEYCODE_MEDIA_REWIND:
-                    // First time a media key is pressed (not a long press repeat)
-                    if (event.getRepeatCount() == 0) {
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                    if (event.getRepeatCount() == 0) { // # On first press
+                        stopScrubbing();
                         scrubMultiplier = 1;
-                        long seekTime = (event.getKeyCode() == KeyEvent.KEYCODE_MEDIA_REWIND) ? -500L : 500L;
-                        scrubSpeed = seekTime;
-                        updatePlayerTimeInfo();
+                        timeUpdateHandler.post(scrubRunnable);
                     }
                     return true;
                     
-                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                case KeyEvent.KEYCODE_MEDIA_PLAY:
-                case KeyEvent.KEYCODE_MEDIA_PAUSE:
-                    // Stop scrubbing before playing/pausing
-                    if (scrubMultiplier > 0) {
+                case KeyEvent.KEYCODE_MEDIA_REWIND:
+                case KeyEvent.KEYCODE_DPAD_LEFT:
+                    if (event.getRepeatCount() == 0) { // # On first press
                         stopScrubbing();
+                        scrubMultiplier = -1;
+                        timeUpdateHandler.post(scrubRunnable);
                     }
-                    if (player.isPlaying()) {
-                        player.pause();
-                    } else {
-                        player.play();
-                    }
-                    updatePlayPauseButton();
-                    toggleControls(); 
                     return true;
             }
-
+        }
+        
         // --- KEY UP ACTION HANDLING ---
-        } else if (event.getAction() == KeyEvent.ACTION_UP) {
+        if (event.getAction() == KeyEvent.ACTION_UP) {
             switch (event.getKeyCode()) {
-                case KeyEvent.KEYCODE_MEDIA_REWIND:
+                // # Stop scrubbing when FF/RW/D-Pad L/R is released
                 case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                    // Stop scrubbing when the button is released
+                case KeyEvent.KEYCODE_DPAD_RIGHT:
+                case KeyEvent.KEYCODE_MEDIA_REWIND:
+                case KeyEvent.KEYCODE_DPAD_LEFT:
                     stopScrubbing();
                     return true;
-
-                case KeyEvent.KEYCODE_DPAD_CENTER:
-                    // FIX: Ensure the UP event is consumed if controls are hidden
-                    if (customControls.getVisibility() != View.VISIBLE) {
-                        return true; 
-                    }
-                    break;
             }
         }
 
-        // Fallback: Delegate unhandled keys to PlayerView's internal controller logic 
-        if (playerView != null && playerView.dispatchKeyEvent(event)) {
-            customControls.setVisibility(View.VISIBLE);
-            resetControlsTimeout();
-            return true;
-        }
-
-        // Final fallback
+        // # Fallback: let the system handle it
         return super.dispatchKeyEvent(event);
     }
-
 }
