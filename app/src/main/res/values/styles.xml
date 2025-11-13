@@ -14,12 +14,6 @@
         <item name="windowNoTitle">true</item>
     </style>
 
-    <!-- 
-        SkipButton style: Used for skip buttons (intro, recap, credits, next episode)
-        REQUIRED FOR: TV/FireStick remote control - provides visual focus feedback
-        INTERACTS WITH: btnSkipIntro, btnSkipRecap, btnSkipCredits, btnNextEpisode in activity_main.xml
-        BACKGROUND: Uses skip_button_background.xml which changes to white when focused
-    -->
     <style name="SkipButton">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">48dp</item>
@@ -27,29 +21,33 @@
         <item name="android:textSize">14sp</item>
         <item name="android:textStyle">bold</item>
         <item name="android:textColor">@color/skip_button_text</item>
-        <!-- Uses drawable selector with state_focused for TV remote highlighting -->
         <item name="android:background">@drawable/skip_button_background</item>
-        <!-- CRITICAL FOR TV: Allows D-pad to focus this button -->
-        <item name="android:focusable">true</item>
-        <!-- CRITICAL FOR TV: Allows D-pad center button to click this button -->
-        <item name="android:clickable">true</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">12dp</item>
+        <item name="android:layout_marginBottom">10dp</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:layout_marginEnd">20dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.05</item>
+        <item name="android:stateListAnimator">@null</item>
     </style>
-
-    <!-- 
-        ControlButton style: Used for ImageButton controls (play/pause, rewind, fast-forward, etc.)
-        REQUIRED FOR: TV/FireStick remote control - provides visual focus feedback
-        INTERACTS WITH: All ImageButton elements in activity_main.xml
-    -->
+    
     <style name="ControlButton">
         <item name="android:layout_width">56dp</item>
         <item name="android:layout_height">56dp</item>
-        <!-- CHANGED: Custom focus drawable for TV remote highlighting instead of system default -->
         <item name="android:background">@drawable/control_button_background</item>
-        <item name="android:scaleType">centerInside</item>
-        <!-- CRITICAL FOR TV: Allows D-pad to focus this button -->
-        <item name="android:focusable">true</item>
-        <!-- CRITICAL FOR TV: Allows D-pad center button to click this button -->
-        <item name="android:clickable">true</item>
+        <item name="android:tint">@color/white</item>
+        <item name="android:padding">12dp</item>
+        <item name="android:scaleType">fitCenter</item>
+    </style>
+
+    <style name="ControlButton.Large" parent="ControlButton">
+        <item name="android:layout_width">64dp</item>
+        <item name="android:layout_height">64dp</item>
+        <item name="android:padding">10dp</item>
+        <item name="android:layout_marginStart">10dp</item>
+        <item name="android:layout_marginEnd">10dp</item>
     </style>
 
     <style name="ControlButton.Small" parent="ControlButton">
@@ -78,12 +76,20 @@
         <item name="android:shadowDy">1</item>
         <item name="android:shadowRadius">2</item>
     </style>
+    
+    <style name="TimeText.Bold" parent="TimeText">
+        <item name="android:textStyle">bold</item>
+    </style>
 
     <style name="TimeLabelText">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:textColor">#CCCCCC</item>
-        <item name="android:textSize">10sp</item>
-        <item name="android:textAllCaps">true</item>
+        <item name="android:textColor">#AAAAAA</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:shadowColor">@color/black</item>
+        <item name="android:shadowDx">1</item>
+        <item name="android:shadowDy">1</item>
+        <item name="android:shadowRadius">2</item>
     </style>
+
 </resources>
