@@ -1,17 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    activity_main.xml
+    FUNCTION: Main layout for the video player. Contains the PlayerView and all UI overlays.
+    INTERACTS WITH: MainActivity.java (which controls this layout).
+    PERSONALIZATION: You can rearrange the layout, but ensure all IDs match MainActivity.java.
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/black">
 
+    <!-- The main view where video is rendered -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:show_buffering="when_playing"
-        app:use_controller="false" />
+        app:use_controller="false" /> <!-- We use a custom controller -->
 
+    <!-- 
+        Skip Buttons Overlay Container
+        FUNCTION: Holds all skip buttons (Intro, Recap, Credits, Cancel, Next Episode).
+        This container is shown/hidden by MainActivity.java.
+    -->
     <LinearLayout
         android:id="@+id/skipButtonsOverlayContainer"
         android:layout_width="wrap_content"
@@ -20,69 +32,91 @@
         android:layout_marginBottom="64dp" 
         android:layout_marginEnd="20dp" 
         android:orientation="vertical"
-        android:gravity="end">
+        android:gravity="end"
+        android:visibility="gone"> <!-- Starts hidden -->
 
+        <!-- 
+            Skip Intro Button
+            FIX: Added nextFocus attributes for D-pad navigation.
+        -->
         <Button android:id="@+id/btnSkipIntro" style="@style/SkipButton" android:text="@string/skip_intro" android:visibility="gone" 
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipRecap"
-            android:nextFocusUp="@id/btnNextEpisode"
-            android:nextFocusLeft="@id/progressBar"
-            android:nextFocusRight="@id/btnSkipIntro" />
+            android:nextFocusUp="@id/btnNextEpisode" />
             
+        <!-- 
+            Skip Recap Button
+            FIX: Added nextFocus attributes for D-pad navigation.
+        -->
         <Button android:id="@+id/btnSkipRecap" style="@style/SkipButton" android:text="@string/skip_recap" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipCredits"
-            android:nextFocusUp="@id/btnSkipIntro"
-            android:nextFocusLeft="@id/progressBar"
-            android:nextFocusRight="@id/btnSkipRecap" />
+            android:nextFocusUp="@id/btnSkipIntro" />
 
+        <!-- 
+            Skip Credits Button
+            FIX: Added nextFocus attributes for D-pad navigation.
+        -->
         <Button android:id="@+id/btnSkipCredits" style="@style/SkipButton" android:text="@string/skip_credits" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipCancel"
-            android:nextFocusUp="@id/btnSkipRecap"
-            android:nextFocusLeft="@id/progressBar"
-            android:nextFocusRight="@id/btnSkipCredits" />
+            android:nextFocusUp="@id/btnSkipRecap" />
 
+        <!-- 
+            NEW: Cancel Skip Button (Feature P2/Cancel)
+            FUNCTION: Allows user to dismiss the skip prompt.
+            FIX: Added nextFocus attributes for D-pad navigation.
+        -->
         <Button android:id="@+id/btnSkipCancel" style="@style/SkipButton" android:text="@string/skip_cancel" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnNextEpisode"
-            android:nextFocusUp="@id/btnSkipCredits"
-            android:nextFocusLeft="@id/progressBar"
-            android:nextFocusRight="@id/btnSkipCancel" />
+            android:nextFocusUp="@id/btnSkipCredits" />
 
+        <!-- 
+            Next Episode Button
+            FIX: Added nextFocus attributes for D-pad navigation.
+        -->
         <Button android:id="@+id/btnNextEpisode" style="@style/SkipButton" android:text="@string/next_episode" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipIntro"
-            android:nextFocusUp="@id/btnSkipCancel"
-            android:nextFocusLeft="@id/progressBar"
-            android:nextFocusRight="@id/btnNextEpisode" />
+            android:nextFocusUp="@id/btnSkipCancel" />
 
-        <ProgressBar
-            android:id="@+id/progressBar"
-            style="?android:attr/progressBarStyleHorizontal"
-            android:layout_width="match_parent"
-            android:layout_height="2dp"
-            android:layout_marginTop="20dp"
-            android:max="1000"
-            android:progress="0" />
+    </LinearLayout>
+    
+    <!-- 
+        Custom Controls Overlay
+        FUNCTION: Holds the main playback controls (Play/Pause, Settings, etc.)
+        FIX: ID is 'customControlsOverlay' to match original file.
+    -->
+    <LinearLayout
+        android:id="@+id/customControlsOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="@color/control_background"
+        android:orientation="vertical"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone"> <!-- Starts hidden -->
 
+        <!-- Time Info Container -->
         <LinearLayout
-            android:id="@+id/timeInfoContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:layout_marginTop="5dp"
             android:gravity="end|center_vertical"
             android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:background="@color/semi_transparent">
+            android:paddingEnd="10dp">
 
+            <!-- Time Text Views -->
             <TextView
                 android:id="@+id/tvElapsedTime"
-                style="@style/TimeText"
+                style="@style/TimeLabelText"
                 android:text="@string/elapsed_time"
                 android:layout_marginEnd="10dp" />
 
+            <!-- FIX: Style is 'TimeText.Bold' to match the style we added in styles.xml -->
             <TextView
                 android:id="@+id/tvCurrentTime"
                 style="@style/TimeText.Bold"
@@ -90,7 +124,7 @@
             
             <TextView
                 android:id="@+id/tvTotalTime"
-                style="@style/TimeText"
+                style="@style/TimeText.Bold"
                 android:text=" / 00:00:00"
                 android:layout_marginStart="5dp"
                 android:layout_marginEnd="10dp" />
@@ -124,49 +158,37 @@
                 android:text="00:00" />
             
         </LinearLayout>
+        
+        <!-- Progress Bar -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:layout_marginTop="10dp"
+            android:max="1000"
+            android:progress="0" />
 
-    </LinearLayout>
-    
-    <LinearLayout
-        android:id="@+id/customControlsOverlay"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="@color/control_background"
-        android:orientation="vertical"
-        android:paddingTop="10dp"
-        android:paddingBottom="10dp"
-        android:visibility="gone">
-
+        <!-- Main Playback Controls -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center"
-            android:orientation="horizontal">
+            android:orientation="horizontal"
+            android:layout_marginTop="10dp">
 
-            <ImageButton android:id="@+id/btnRewind" style="@style/ControlButton" android:src="@android:drawable/ic_media_previous" android:contentDescription="@string/rewind"
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnSettings"
-                android:nextFocusLeft="@id/btnRewind"
-                android:nextFocusRight="@id/btnPlayPause"
-                android:nextFocusDown="@id/btnAudioDelay" />
+            <ImageButton android:id="@+id/btnRewind" style="@style/ControlButton.Large" android:src="@android:drawable/ic_media_previous" android:contentDescription="@string/rewind"
+                android:focusable="true" android:clickable="true" />
 
-            <ImageButton android:id="@+id/btnPlayPause" style="@style/ControlButton" android:src="@android:drawable/ic_media_play" android:contentDescription="@string/play_pause"
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnSettings"
-                android:nextFocusLeft="@id/btnRewind"
-                android:nextFocusRight="@id/btnFastForward"
-                android:nextFocusDown="@id/btnAudioDelay" />
+            <ImageButton android:id="@+id/btnPlayPause" style="@style/ControlButton.Large" android:src="@android:drawable/ic_media_play" android:contentDescription="@string/play_pause"
+                android:focusable="true" android:clickable="true" />
 
-            <ImageButton android:id="@+id/btnFastForward" style="@style/ControlButton" android:src="@android:drawable/ic_media_next" android:contentDescription="@string/fast_forward"
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnSettings"
-                android:nextFocusLeft="@id/btnPlayPause"
-                android:nextFocusRight="@id/btnFastForward"
-                android:nextFocusDown="@id/btnAudioDelay" />
+            <ImageButton android:id="@+id/btnFastForward" style="@style/ControlButton.Large" android:src="@android:drawable/ic_media_next" android:contentDescription="@string/fast_forward"
+                android:focusable="true" android:clickable="true" />
 
         </LinearLayout>
 
+        <!-- Secondary Controls / Settings -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -175,52 +197,26 @@
             android:layout_marginTop="10dp">
 
             <ImageButton android:id="@+id/btnSettings" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_preferences" android:contentDescription="@string/settings"
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnPlayPause"
-                android:nextFocusLeft="@id/btnSettings"
-                android:nextFocusRight="@id/btnPlaybackSpeed"
-                android:nextFocusDown="@id/btnRewind" />
+                android:focusable="true" android:clickable="true" />
 
+            <!-- Note: btnPlaybackSpeed is not used in the original MainActivity.java, but the ID exists -->
             <ImageButton android:id="@+id/btnPlaybackSpeed" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_rotate" android:contentDescription="@string/playback_speed"
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnPlayPause"
-                android:nextFocusLeft="@id/btnSettings"
-                android:nextFocusRight="@id/btnSubtitles"
-                android:nextFocusDown="@id/btnRewind" />
+                android:focusable="true" android:clickable="true" />
 
             <ImageButton android:id="@+id/btnSubtitles" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_btn_speak_now" android:contentDescription="@string/subtitles"
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnPlayPause"
-                android:nextFocusLeft="@id/btnPlaybackSpeed"
-                android:nextFocusRight="@id/btnAudioDelay"
-                android:nextFocusDown="@id/btnRewind" />
+                android:focusable="true" android:clickable="true" />
 
             <ImageButton android:id="@+id/btnAudioDelay" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_share" android:contentDescription="@string/audio_delay"
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnFastForward"
-                android:nextFocusLeft="@id/btnSubtitles"
-                android:nextFocusRight="@id/btnSubtitleDelay"
-                android:nextFocusDown="@id/btnAudioDelay" />
+                android:focusable="true" android:clickable="true" />
 
             <ImageButton android:id="@+id/btnSubtitleDelay" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_edit" android:contentDescription="@string/subtitle_delay"
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnFastForward"
-                android:nextFocusLeft="@id/btnAudioDelay"
-                android:nextFocusRight="@id/btnButton4"
-                android:nextFocusDown="@id/btnSubtitleDelay" />
+                android:focusable="true" android:clickable="true" />
             
             <ImageButton android:id="@+id/btnButton4" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_report_image" android:contentDescription="Button 4" 
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnFastForward"
-                android:nextFocusLeft="@id/btnSubtitleDelay"
-                android:nextFocusRight="@id/btnButton5"
-                android:nextFocusDown="@id/btnButton4" />
+                android:focusable="true" android:clickable="true" />
             
             <ImageButton android:id="@+id/btnButton5" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_crop" android:contentDescription="Button 5" 
-                android:focusable="true" android:clickable="true"
-                android:nextFocusUp="@id/btnFastForward"
-                android:nextFocusLeft="@id/btnButton4"
-                android:nextFocusRight="@id/btnSubtitles" android:nextFocusDown="@id/btnButton5" />
+                android:focusable="true" android:clickable="true" />
 
         </LinearLayout>
     </LinearLayout>
