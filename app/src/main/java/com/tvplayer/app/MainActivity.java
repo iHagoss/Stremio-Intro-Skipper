@@ -388,11 +388,11 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         skipMarkers.setNextEpisodeStart(preferencesHelper.getNextEpisodeStart());
 
         // # Apply Subtitle Delay
-        // # FIX: This is the correct Media3 API call for subtitle delay.
-        // # The method is setSubtitleDelay(long) on the Player object.
+        // # FIX: This method (`setSubtitleDelay`) is now available because
+        // # we updated the media3 library version in build.gradle
         try {
             int subtitleDelayMs = preferencesHelper.getSubtitleDelayMs();
-            player.setSubtitleDelayMS(long) subtitleDelayMs); // # This is the correct method
+            player.setSubtitleDelay((long) subtitleDelayMs); // # This is the correct method
         } catch (Exception e) {
             Log.e(TAG, "Failed to apply subtitle delay", e);
         }
