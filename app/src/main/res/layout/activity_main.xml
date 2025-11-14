@@ -1,30 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    activity_main.xml
-    FUNCTION: Main layout for the video player. Contains the PlayerView and all UI overlays.
-    INTERACTS WITH: MainActivity.java (which controls this layout).
-    PERSONALIZATION: You can rearrange the layout, but ensure all IDs match MainActivity.java.
--->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/black">
 
-    <!-- The main view where video is rendered -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:show_buffering="when_playing"
-        app:use_controller="false" /> <!-- We use a custom controller -->
-
-    <!-- 
-        Skip Buttons Overlay Container
-        FUNCTION: Holds all skip buttons (Intro, Recap, Credits, Cancel, Next Episode).
-        This container is shown/hidden by MainActivity.java.
-    -->
-    <LinearLayout
+        app:use_controller="false" /> <LinearLayout
         android:id="@+id/skipButtonsOverlayContainer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -33,49 +19,26 @@
         android:layout_marginEnd="20dp" 
         android:orientation="vertical"
         android:gravity="end"
-        android:visibility="gone"> <!-- Starts hidden -->
-
-        <!-- 
-            Skip Intro Button
-            FIX: Added nextFocus attributes for D-pad navigation.
-        -->
-        <Button android:id="@+id/btnSkipIntro" style="@style/SkipButton" android:text="@string/skip_intro" android:visibility="gone" 
+        android:visibility="gone"> <Button android:id="@+id/btnSkipIntro" style="@style/SkipButton" android:text="@string/skip_intro" android:visibility="gone" 
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipRecap"
             android:nextFocusUp="@id/btnNextEpisode" />
             
-        <!-- 
-            Skip Recap Button
-            FIX: Added nextFocus attributes for D-pad navigation.
-        -->
         <Button android:id="@+id/btnSkipRecap" style="@style/SkipButton" android:text="@string/skip_recap" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipCredits"
             android:nextFocusUp="@id/btnSkipIntro" />
 
-        <!-- 
-            Skip Credits Button
-            FIX: Added nextFocus attributes for D-pad navigation.
-        -->
         <Button android:id="@+id/btnSkipCredits" style="@style/SkipButton" android:text="@string/skip_credits" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipCancel"
             android:nextFocusUp="@id/btnSkipRecap" />
 
-        <!-- 
-            NEW: Cancel Skip Button (Feature P2/Cancel)
-            FUNCTION: Allows user to dismiss the skip prompt.
-            FIX: Added nextFocus attributes for D-pad navigation.
-        -->
         <Button android:id="@+id/btnSkipCancel" style="@style/SkipButton" android:text="@string/skip_cancel" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnNextEpisode"
             android:nextFocusUp="@id/btnSkipCredits" />
 
-        <!-- 
-            Next Episode Button
-            FIX: Added nextFocus attributes for D-pad navigation.
-        -->
         <Button android:id="@+id/btnNextEpisode" style="@style/SkipButton" android:text="@string/next_episode" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipIntro"
@@ -83,11 +46,6 @@
 
     </LinearLayout>
     
-    <!-- 
-        Custom Controls Overlay
-        FUNCTION: Holds the main playback controls (Play/Pause, Settings, etc.)
-        FIX: ID is 'customControlsOverlay' to match original file.
-    -->
     <LinearLayout
         android:id="@+id/customControlsOverlay"
         android:layout_width="match_parent"
@@ -97,10 +55,7 @@
         android:orientation="vertical"
         android:paddingTop="10dp"
         android:paddingBottom="10dp"
-        android:visibility="gone"> <!-- Starts hidden -->
-
-        <!-- Time Info Container -->
-        <LinearLayout
+        android:visibility="gone"> <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
@@ -109,14 +64,12 @@
             android:paddingStart="10dp"
             android:paddingEnd="10dp">
 
-            <!-- Time Text Views -->
             <TextView
                 android:id="@+id/tvElapsedTime"
                 style="@style/TimeLabelText"
                 android:text="@string/elapsed_time"
                 android:layout_marginEnd="10dp" />
 
-            <!-- FIX: Style is 'TimeText.Bold' to match the style we added in styles.xml -->
             <TextView
                 android:id="@+id/tvCurrentTime"
                 style="@style/TimeText.Bold"
@@ -159,7 +112,6 @@
             
         </LinearLayout>
         
-        <!-- Progress Bar -->
         <ProgressBar
             android:id="@+id/progressBar"
             style="?android:attr/progressBarStyleHorizontal"
@@ -169,7 +121,6 @@
             android:max="1000"
             android:progress="0" />
 
-        <!-- Main Playback Controls -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -188,7 +139,6 @@
 
         </LinearLayout>
 
-        <!-- Secondary Controls / Settings -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -199,7 +149,6 @@
             <ImageButton android:id="@+id/btnSettings" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_preferences" android:contentDescription="@string/settings"
                 android:focusable="true" android:clickable="true" />
 
-            <!-- Note: btnPlaybackSpeed is not used in the original MainActivity.java, but the ID exists -->
             <ImageButton android:id="@+id/btnPlaybackSpeed" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_rotate" android:contentDescription="@string/playback_speed"
                 android:focusable="true" android:clickable="true" />
 
