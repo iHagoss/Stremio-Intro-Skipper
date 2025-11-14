@@ -82,7 +82,7 @@ public class ManualPreferenceStrategy implements SkipDetectionStrategy {
     
     @Override
     public boolean isAvailable() {
-        return true; // Always available as a fallback
+        return true; // # Always available as a fallback
     }
     
     @Override

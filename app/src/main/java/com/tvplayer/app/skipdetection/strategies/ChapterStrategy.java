@@ -38,7 +38,7 @@ public class ChapterStrategy implements SkipDetectionStrategy {
      * to avoid the circular dependency / startup order bug.
      */
     public ChapterStrategy() {
-        // Player is not available at construction time
+        // # Player is not available at construction time
     }
     
     /**
@@ -47,7 +47,7 @@ public class ChapterStrategy implements SkipDetectionStrategy {
      * @param player The ExoPlayer/Media3 instance.
      */
     public void rebindToPlayer(Player player) {
-        // If we're binding to a new player, remove the listener from the old one
+        // # If we're binding to a new player, remove the listener from the old one
         if (this.player != null && this.metadataListener != null) {
             try {
                 this.player.removeListener(this.metadataListener);
@@ -68,7 +68,7 @@ public class ChapterStrategy implements SkipDetectionStrategy {
      * Sets up the Media3 player listener to capture metadata events.
      */
     private void setupMetadataListener() {
-        // Create the listener
+        // # Create the listener
         this.metadataListener = new Player.Listener() {
             @Override
             public void onMetadata(Metadata metadata) {

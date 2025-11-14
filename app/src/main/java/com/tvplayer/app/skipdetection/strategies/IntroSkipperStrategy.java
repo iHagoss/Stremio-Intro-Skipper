@@ -135,7 +135,7 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
     
     @Override
     public boolean isAvailable() {
-        return true; // The API is generally always available to try.
+        return true; // # The API is generally always available to try.
     }
     
     @Override

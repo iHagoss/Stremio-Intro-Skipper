@@ -89,7 +89,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     private long fetchRuntimeFromTrakt(MediaIdentifier mediaIdentifier, boolean isTvShow) {
         String traktApiKey = prefsHelper.getTraktApiKey();
         if (traktApiKey.isEmpty()) {
-            return 0; // Cannot use Trakt without a key
+            return 0; // # Cannot use Trakt without a key
         }
         
         String url;
@@ -105,7 +105,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
                 url = String.format("%s/movies/%s?extended=full", TRAKT_API_URL, traktId);
             }
         } else {
-            return 0; // No ID to look up
+            return 0; // # No ID to look up
         }
         
         Request request = new Request.Builder()
@@ -135,10 +135,10 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
     // # Simple, hardcoded rules to guess where segments might be based on total runtime.
     private void applyHeuristics(List<SkipSegment> segments, long runtimeSeconds, boolean isTvShow) {
         if (!isTvShow) {
-            return; // Heuristics are generally less reliable for movies
+            return; // # Heuristics are generally less reliable for movies
         }
         
-        if (runtimeSeconds >= 20 * 60) { // 20+ minute episode
+        if (runtimeSeconds >= 20 * 60) { // # 20+ minute episode
             // # Assume a 0-90 second intro.
             segments.add(new SkipSegment(SkipSegmentType.INTRO, 0, 90));
             // # Assume credits start 180 seconds before the end.
@@ -146,7 +146,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
             if (creditsStart > 0) {
                 segments.add(new SkipSegment(SkipSegmentType.CREDITS, creditsStart, (int) runtimeSeconds));
             }
-        } else if (runtimeSeconds >= 15 * 60) { // 15-19 minute episode
+        } else if (runtimeSeconds >= 15 * 60) { // # 15-19 minute episode
             // # Assume a 0-60 second intro.
             segments.add(new SkipSegment(SkipSegmentType.INTRO, 0, 60));
             // # Assume credits start 120 seconds before the end.
