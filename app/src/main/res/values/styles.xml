@@ -1,19 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-    styles.xml
-    FUNCTION: Defines the visual themes and styles for the application and its components.
-    INTERACTS WITH: AndroidManifest.xml (AppTheme), activity_main.xml (component styles).
-    PERSONALIZATION: You can change colors, sizes, and default appearances for buttons, text, etc.
--->
 <resources>
-    <!-- Base application theme. -->
     <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
-    <!-- Theme for the full-screen player activity. -->
     <style name="AppTheme.Fullscreen" parent="AppTheme">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowContentOverlay">@null</item>
@@ -22,11 +14,6 @@
         <item name="windowNoTitle">true</item>
     </style>
 
-    <!-- 
-        SkipButton style: Used for all on-screen skip buttons (intro, recap, credits, next episode).
-        REQUIRED FOR: Providing a consistent look and focus feedback for TV remote navigation.
-        INTERACTS WITH: skip_button_background.xml, activity_main.xml.
-    -->
     <style name="SkipButton">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">48dp</item>
@@ -46,11 +33,6 @@
         <item name="android:stateListAnimator">@null</item>
     </style>
     
-    <!-- 
-        ControlButton style: Base style for all media playback control ImageButtons.
-        REQUIRED FOR: Media controls in activity_main.xml.
-        BACKGROUND: Uses control_button_background.xml for focus feedback.
-    -->
     <style name="ControlButton">
         <item name="android:layout_width">56dp</item>
         <item name="android:layout_height">56dp</item>
@@ -60,7 +42,6 @@
         <item name="android:scaleType">fitCenter</item>
     </style>
 
-    <!-- Inherited styles for different sized control buttons -->
     <style name="ControlButton.Large" parent="ControlButton">
         <item name="android:layout_width">64dp</item>
         <item name="android:layout_height">64dp</item>
@@ -85,7 +66,6 @@
         <item name="android:layout_marginEnd">10dp</item>
     </style>
 
-    <!-- Base style for time display TextViews on the media player. -->
     <style name="TimeText">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
@@ -97,16 +77,10 @@
         <item name="android:shadowRadius">2</item>
     </style>
     
-    <!-- 
-        FIX: This style was missing, causing the 'AAPT' build error.
-        FUNCTION: Inherits from TimeText and makes the font bold.
-        INTERACTS WITH: activity_main.xml (tvCurrentTime, tvTotalTime).
-    -->
     <style name="TimeText.Bold" parent="TimeText">
         <item name="android:textStyle">bold</item>
     </style>
 
-    <!-- Style for dimmer, smaller time labels. -->
     <style name="TimeLabelText">
         <item name="android:layout_width">wrap_content</item>
         <item name="android:layout_height">wrap_content</item>
