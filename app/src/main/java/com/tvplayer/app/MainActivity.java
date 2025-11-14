@@ -389,13 +389,19 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
 
         // # Apply Subtitle Delay
         // # FIX: This method (`setSubtitleDelay`) is now available because
-        // # we updated the media3 library version in build.gradle
-        try {
-            int subtitleDelayMs = preferencesHelper.getSubtitleDelayMs();
-            player.setSubtitleDelay((long) subtitleDelayMs); // # This is the correct method
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to apply subtitle delay", e);
-        }
+        // # we updated the media3 library version in build.gradle   private void showSubtitleDelayDialog() {
+        int currentDelay = prefsHelper.getSubtitleDelayMs();
+        String[] options = {"-500ms", "-250ms", "-100ms", "0ms (Reset)", "+100ms", "+250ms", "+500ms"};
+        int[] values = {-500, -250, -100, 0, 100, 250, 500};
+        new AlertDialog.Builder(this)
+                .setTitle("Subtitle Delay")
+                .setItems(options, (dialog, which) -> {
+                    prefsHelper.setSubtitleDelayMs(values[which]);
+                    applyAudioSubtitleDelays();
+                    Toast.makeText(this, "Subtitle delay: \n" + options[which], Toast.LENGTH_SHORT).show();
+                })
+                .show();
+        resetControlsTimeout();
     }
     
     /**
