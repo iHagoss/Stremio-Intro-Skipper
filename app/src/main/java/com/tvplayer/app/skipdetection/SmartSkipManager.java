@@ -17,6 +17,9 @@ import com.tvplayer.app.skipdetection.strategies.IntroSkipperStrategy;
 import com.tvplayer.app.skipdetection.strategies.ManualPreferenceStrategy;
 import com.tvplayer.app.skipdetection.strategies.MetadataHeuristicStrategy;
 
+// # FIX: Added this import to resolve the 'cannot find symbol: variable DetectionSource' error
+import com.tvplayer.app.skipdetection.SkipDetectionResult.DetectionSource;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -55,8 +58,9 @@ public class SmartSkipManager {
     private final ChapterStrategy chapterStrategy;
     
     /**
-     * FIX: Constructor no longer takes a Player object to fix the startup build error.
-     * The Player is now passed later via rebindPlayer().
+     * Constructor
+     * FUNCTION: Initializes all strategies and sorts them by priority.
+     * FIX: No longer takes a Player object to fix the startup build error.
      */
     public SmartSkipManager(Context context, PreferencesHelper prefsHelper) {
         this.prefsHelper = prefsHelper;
@@ -96,7 +100,8 @@ public class SmartSkipManager {
     }
     
     /**
-     * FIX: New method to bind the player to strategies that need it (ChapterStrategy).
+     * rebindPlayer
+     * FUNCTION: Binds the player to strategies that need it (like ChapterStrategy).
      * This is called from MainActivity once the player is in the STATE_READY.
      * @param player The prepared Media3 Player instance.
      */
@@ -105,11 +110,11 @@ public class SmartSkipManager {
         if (chapterStrategy != null) {
             chapterStrategy.rebindToPlayer(player);
         }
-        // # (Add any other player-dependent strategies here)
     }
 
     /**
-     * Public method to start the detection process asynchronously.
+     * detectSkipSegmentsAsync
+     * FUNCTION: Starts the detection process on a background thread.
      * @param mediaIdentifier Input data for the strategies.
      * @param callback The interface to return the result to (MainActivity).
      */
@@ -130,12 +135,13 @@ public class SmartSkipManager {
     }
     
     /**
-     * The core, synchronous (blocking) detection logic.
-     * This runs on the background thread from detectSkipSegmentsAsync.
+     * detectSkipSegmentsSync
+     * FUNCTION: The core, synchronous (blocking) detection logic.
+     * This runs on the background thread.
      */
     private SkipDetectionResult detectSkipSegmentsSync(MediaIdentifier mediaIdentifier) {
         
-        // # 1. Check Cache First (Cache is separate from the main priority list for speed)
+        // # 1. Check Cache First
         SkipDetectionResult cachedResult = cacheStrategy.detect(mediaIdentifier);
         if (cachedResult.isSuccess()) {
             Log.i(TAG, "Cache hit: Returning result from " + cachedResult.getSource().getDisplayName());
@@ -146,15 +152,15 @@ public class SmartSkipManager {
         // # Clear any old chapter data before starting
         chapterStrategy.clearCapturedChapters();
 
-        // # Variables to hold the best result and manage the async flow
+        // # Variables to hold the best result
         final AtomicReference<SkipDetectionResult> bestResult = new AtomicReference<>(null);
         final List<Future<?>> futures = new ArrayList<>();
 
-        // # 2. Run all strategies concurrently according to their priority
+        // # 2. Run all strategies concurrently
         for (SkipDetectionStrategy strategy : strategies) {
             if (!strategy.isAvailable()) {
                 Log.d(TAG, "Skipping unavailable strategy: " + strategy.getStrategyName());
-                continue; // # Skip strategies that are not configured
+                continue; 
             }
             
             // # Submit each strategy to be run on the thread pool
@@ -166,7 +172,7 @@ public class SmartSkipManager {
                     if (result.isSuccess()) {
                         Log.i(TAG, "Success from " + strategy.getStrategyName() + " (Conf: " + result.getConfidence() + ")");
                         
-                        // # Critical Section: Only one thread can update the best result at a time
+                        // # Critical Section: Only one thread can update the best result
                         synchronized (bestResult) {
                             // # If no result is set, or if this new result is better, update it
                             if (bestResult.get() == null || result.getConfidence() > bestResult.get().getConfidence()) {
@@ -185,9 +191,7 @@ public class SmartSkipManager {
             futures.add(future);
         }
         
-        // # 3. Wait for all threads/futures to complete
-        // # This part is tricky. We can't use awaitTermination as it shuts down the service.
-        // # Instead, we poll the futures.
+        // # 3. Wait for all threads to complete or timeout
         long startTime = System.currentTimeMillis();
         boolean allDone = false;
         while (!allDone && (System.currentTimeMillis() - startTime) < DETECTION_TIMEOUT_MS) {
@@ -224,6 +228,7 @@ public class SmartSkipManager {
         // # If no strategy succeeded, create a 'failed' result
         if (finalResult == null) {
             Log.w(TAG, "No strategy returned a successful result.");
+            // # FIX: This line now compiles due to the new import
             finalResult = SkipDetectionResult.failed(DetectionSource.NONE, "No skip segments found by any strategy.");
         }
         
