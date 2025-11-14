@@ -47,7 +47,7 @@ public class SkipDetectionResult {
             this.displayName = displayName;
         }
 
-        // FIX: Added this helper method to fix compile error in MainActivity
+        // # FIX: Added this helper method to fix compile error in MainActivity
         public String getDisplayName() {
             return displayName;
         }
@@ -84,7 +84,7 @@ public class SkipDetectionResult {
 
     // --- Constructors ---
 
-    // Private constructor, use static factory methods
+    // # Private constructor, use static factory methods
     private SkipDetectionResult(boolean success, DetectionSource source, float confidence, List<SkipSegment> segments, String errorMessage) {
         this.success = success;
         this.source = source;
