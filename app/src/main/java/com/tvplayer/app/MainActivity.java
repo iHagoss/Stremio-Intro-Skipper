@@ -392,7 +392,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         // # The method is setSubtitleDelay(long) on the Player object.
         try {
             int subtitleDelayMs = preferencesHelper.getSubtitleDelayMs();
-            player.setSubtitleDelay((long) subtitleDelayMs); // # This is the correct method
+            player.setSubtitleDelayMS(long) subtitleDelayMs); // # This is the correct method
         } catch (Exception e) {
             Log.e(TAG, "Failed to apply subtitle delay", e);
         }
