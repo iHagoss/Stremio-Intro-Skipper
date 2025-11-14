@@ -387,11 +387,12 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         
         skipMarkers.setNextEpisodeStart(preferencesHelper.getNextEpisodeStart());
 
+        // # Apply Subtitle Delay
         // # FIX: This is the correct Media3 API call for subtitle delay.
-        // # The method is on the Player object directly, not TrackSelectionParameters.
+        // # The method is setSubtitleDelay(long) on the Player object.
         try {
             int subtitleDelayMs = preferencesHelper.getSubtitleDelayMs();
-            player.setSubtitleDelayMs(subtitleDelayMs);
+            player.setSubtitleDelay((long) subtitleDelayMs); // # This is the correct method
         } catch (Exception e) {
             Log.e(TAG, "Failed to apply subtitle delay", e);
         }
@@ -404,7 +405,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     private void startSkipDetection() {
         if (player == null || player.getDuration() <= 0) return;
         
-        // # FIX: Pass the (now ready) player to the manager
+        // # Pass the (now ready) player to the manager
         smartSkipManager.rebindPlayer(player);
         
         // # Create the MediaIdentifier with all known info
@@ -793,8 +794,9 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         // # Show controls on ANY key press if they are hidden
         if (event.getAction() == KeyEvent.ACTION_DOWN && !customControls.isShown()) {
             // # Don't show controls if it's a media key that works while hidden
+            // # FIX: Changed MEDIA_PLAY to KEYCODE_MEDIA_PLAY
             if (event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE &&
-                event.getKeyCode() != KeyEvent.MEDIA_PLAY &&
+                event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY &&
                 event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PAUSE) {
                 
                 // # Also don't show controls if a skip button is visible
@@ -814,6 +816,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
             switch (event.getKeyCode()) {
                 // # Handle Play/Pause
                 case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                // # FIX: Changed MEDIA_PLAY to KEYCODE_MEDIA_PLAY
                 case KeyEvent.KEYCODE_MEDIA_PLAY:
                     player.play();
                     return true;
