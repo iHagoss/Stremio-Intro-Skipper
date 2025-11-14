@@ -68,8 +68,8 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     private ExoPlayer player;
     
     // --- UI/Control Components ---
-    private View customControls; // FIX: ID is 'customControlsOverlay' in XML
-    private View skipButtonsOverlayContainer; // NEW: Container for all skip buttons
+    private View customControls; // # ID: customControlsOverlay
+    private View skipButtonsOverlayContainer; // # Container for all skip buttons
     private Handler controlsHandler = new Handler(Looper.getMainLooper());
     private static final int CONTROLS_TIMEOUT_MS = 5000;
     private ImageButton btnPlayPause, btnSettings, btnRewind, btnFastForward;
@@ -78,13 +78,13 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     
     // --- Skip Button Components ---
     private Button btnSkipIntro, btnSkipRecap, btnSkipCredits, btnNextEpisode;
-    private Button btnSkipCancel; // NEW: Cancel Button (Feature P2/Cancel)
+    private Button btnSkipCancel; // # NEW: Cancel Button (Feature P2/Cancel)
     
     // --- Time/Scrubbing State ---
     private Handler timeUpdateHandler = new Handler(Looper.getMainLooper());
     private static final int SCRUB_INTERVAL_MS = 250; 
     private static final int SCRUB_STEP_MS = 5000;
-    private int scrubMultiplier = 0; // 0 = not scrubbing
+    private int scrubMultiplier = 0; // # 0 = not scrubbing
     
     // --- Custom Logic Helpers ---
     private PreferencesHelper preferencesHelper;
@@ -92,10 +92,54 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     private SmartSkipManager smartSkipManager;
 
     // --- Time Formatting ---
-    // # Use a duration format that always shows HH:MM:SS
     private final SimpleDateFormat durationFormat;
-    // # Use a simple format for the "Finish At" time
     private final SimpleDateFormat finishTimeFormat = new SimpleDateFormat("h:mm a", Locale.getDefault());
+    
+    // --- Runnables ---
+    
+    // # FIX: Defined controlsTimeoutRunnable to fix build error
+    private final Runnable controlsTimeoutRunnable = new Runnable() {
+        @Override
+        public void run() {
+            hideControls();
+        }
+    };
+    
+    /**
+     * Runnable that updates all time displays and the progress bar every second.
+     */
+    private final Runnable timeUpdateRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (player != null && (player.getPlaybackState() == Player.STATE_READY || player.getPlaybackState() == Player.STATE_BUFFERING) && player.isPlaying()) {
+                updateProgress();
+            }
+            // # Reschedule the runnable to run again in 1 second
+            timeUpdateHandler.postDelayed(this, 1000); 
+        }
+    };
+    
+    /**
+     * Runnable for handling fast-scrubbing (FF/RW).
+     */
+    private final Runnable scrubRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (player != null && scrubMultiplier != 0) {
+                long seekAmount = (long) scrubMultiplier * SCRUB_STEP_MS;
+                long newPosition = player.getCurrentPosition() + seekAmount;
+                // # Clamp position to valid range
+                newPosition = Math.max(0, Math.min(newPosition, player.getDuration()));
+                player.seekTo(newPosition);
+                
+                updateProgress(); // # Update time display immediately
+                resetControlsTimeout(); // # Keep the controls visible
+                
+                // # Reschedule for the next seek tick
+                timeUpdateHandler.postDelayed(this, SCRUB_INTERVAL_MS);
+            }
+        }
+    };
 
 
     /**
@@ -243,11 +287,11 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
             resetControlsTimeout();
         });
         btnRewind.setOnClickListener(v -> {
-            if (player != null) player.seekTo(player.getCurrentPosition() - 10000); // 10 sec
+            if (player != null) player.seekTo(player.getCurrentPosition() - 10000); // # 10 sec
             resetControlsTimeout();
         });
         btnFastForward.setOnClickListener(v -> {
-            if (player != null) player.seekTo(player.getCurrentPosition() + 10000); // 10 sec
+            if (player != null) player.seekTo(player.getCurrentPosition() + 10000); // # 10 sec
             resetControlsTimeout();
         });
         
@@ -300,6 +344,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
      */
     private void releasePlayer() {
         if (player != null) {
+            player.removeListener(this); // # Important: remove listener
             player.release();
             player = null;
         }
@@ -339,7 +384,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         if (creditsOffset > 0 && durationSec > 0) {
             skipMarkers.setCredits((int)(durationSec - creditsOffset), (int)durationSec);
         } else {
-            // # Use the "end" field as a fallback if offset isn't set
+             // # This is a fallback if offset isn't set but manual end time is
             skipMarkers.setCredits(0, preferencesHelper.getCreditsEnd()); 
         }
         
@@ -351,16 +396,12 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
             int subtitleDelayMs = preferencesHelper.getSubtitleDelayMs();
             TrackSelectionParameters params = player.getTrackSelectionParameters()
                 .buildUpon()
-                .setSubtitleDelayMs(subtitleDelayMs)
+                .setSubtitleDelayMs(subtitleDelayMs) // # This is the correct method
                 .build();
             player.setTrackSelectionParameters(params);
         } catch (Exception e) {
             Log.e(TAG, "Failed to apply subtitle delay", e);
         }
-
-        // # FIX: Removed broken setAudioDelay call.
-        // # A simple audio delay is not supported by Media3's public API.
-        // # Implementing it would require a custom AudioSink, which is complex.
     }
     
     /**
@@ -379,6 +420,9 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
             .setRuntimeSeconds(player.getDuration() / 1000)
             // # TODO: Add Trakt/TMDB/TVDB IDs here when available
             // .setTraktId("...")
+            // .setTmdbId("...")
+            // .setSeasonNumber(1)
+            // .setEpisodeNumber(1)
             .build();
             
         // # Start the async detection. 'this' (MainActivity) is the callback.
@@ -501,7 +545,9 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         btnSkipCancel.setVisibility(View.GONE);
         
         // # Return focus to the player view to prevent a "lost focus" state
-        playerView.requestFocus();
+        if(playerView != null) {
+            playerView.requestFocus();
+        }
     }
     
     /**
@@ -526,6 +572,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         btnSkipRecap.setVisibility(View.GONE);
         btnSkipCredits.setVisibility(View.GONE);
         btnNextEpisode.setVisibility(View.GONE);
+        btnSkipCancel.setVisibility(View.GONE); // # Also hide cancel
 
         Button buttonToFocus = null;
 
@@ -558,8 +605,8 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
 
             // # FOCUS FIX: Request focus on the highest-priority button
             // # This check prevents stealing focus if the user is using the main controls
-            if (!customControls.isShown()) {
-                buttonToFocus.requestFocus();
+            if (!customControls.isShown() && !skipButtonsOverlayContainer.hasFocus()) {
+                 buttonToFocus.requestFocus();
             }
         } else if (skipButtonsOverlayContainer.isShown()) {
             // # No buttons are active, hide the container
@@ -579,10 +626,12 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
 
         switch (type) {
             case INTRO:
+                // # FIX: Use getIntro().end to fix build error
                 seekToMs = skipMarkers.getIntro().end * 1000L;
                 toastMessage = "Skipping Intro";
                 break;
             case RECAP:
+                // # FIX: Use getRecap().end to fix build error
                 seekToMs = skipMarkers.getRecap().end * 1000L;
                 toastMessage = "Skipping Recap";
                 break;
@@ -594,7 +643,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
             case NEXT_EPISODE:
                 // # For Next Episode, seek to the end to trigger STATE_ENDED
                 seekToMs = player.getDuration();
-                toastMessage = "Loading Next Episode..."; // Placeholder
+                toastMessage = "Loading Next Episode..."; // # Placeholder
                 break;
             default:
                 return;
@@ -680,6 +729,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
      * Resets the 5-second timer before the controls auto-hide.
      */
     private void resetControlsTimeout() {
+        // # FIX: Use controlsTimeoutRunnable to fix build error
         controlsHandler.removeCallbacks(controlsTimeoutRunnable);
         controlsHandler.postDelayed(controlsTimeoutRunnable, CONTROLS_TIMEOUT_MS);
     }
@@ -699,20 +749,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     // =========================================================================
     // TIME & PROGRESS BAR UPDATES
     // =========================================================================
-
-    /**
-     * Runnable that updates all time displays and the progress bar every second.
-     */
-    private final Runnable timeUpdateRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (player != null && player.getPlaybackState() == Player.STATE_READY) {
-                updateProgress();
-            }
-            // # Reschedule the runnable to run again in 1 second
-            timeUpdateHandler.postDelayed(this, 1000); 
-        }
-    };
     
     /**
      * Updates all time-related UI elements.
@@ -745,32 +781,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     // =========================================================================
     // KEY EVENT HANDLING (Custom Remote/D-Pad Logic)
     // =========================================================================
-    
-    /**
-     * Runnable for handling fast-scrubbing (FF/RW).
-     */
-    private final Runnable scrubRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (player != null && scrubMultiplier != 0) {
-                long seekAmount = (long) scrubMultiplier * SCRUB_STEP_MS;
-                long newPosition = player.getCurrentPosition() + seekAmount;
-                // # Clamp position to valid range
-                newPosition = Math.max(0, Math.min(newPosition, player.getDuration()));
-                player.seekTo(newPosition);
-                
-                // # Update time display immediately
-                updateProgress(); 
-                
-                // # Keep the controls visible
-                resetControlsTimeout(); 
-                
-                // # Reschedule for the next seek tick
-                timeUpdateHandler.postDelayed(this, SCRUB_INTERVAL_MS);
-            }
-        }
-    };
-    
+
     /**
      * Stops the fast-forward/rewind scrubbing action.
      */
@@ -793,12 +804,17 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
                 event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY &&
                 event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PAUSE) {
                 
-                showControls();
+                // # Also don't show controls if a skip button is visible
+                if (!skipButtonsOverlayContainer.isShown()) {
+                    showControls();
+                }
             }
         }
         
-        // # Reset auto-hide timer on any key press
-        resetControlsTimeout();
+        // # Reset auto-hide timer (unless a skip button has focus)
+        if (!skipButtonsOverlayContainer.hasFocus()) {
+             resetControlsTimeout();
+        }
 
         // --- KEY DOWN ACTION HANDLING ---
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
@@ -815,11 +831,12 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
                 // # Handle D-Pad Center / Enter
                 case KeyEvent.KEYCODE_DPAD_CENTER:
                 case KeyEvent.KEYCODE_ENTER:
-                    if (!customControls.isShown()) {
+                    // # If controls are hidden AND skip buttons are hidden, toggle controls
+                    if (!customControls.isShown() && !skipButtonsOverlayContainer.isShown()) {
                         toggleControls();
                         return true;
                     }
-                    // # If controls are shown, let the system handle the click
+                    // # If controls are shown, or skip buttons are shown, let system handle click
                     return super.dispatchKeyEvent(event);
 
                 // # Handle FF/RW

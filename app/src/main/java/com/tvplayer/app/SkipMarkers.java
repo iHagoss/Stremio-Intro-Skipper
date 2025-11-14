@@ -1,16 +1,12 @@
 package com.tvplayer.app;
 
 /**
- * SkipMarkers: A core data and logic class for managing video skip segments
- * (Intro, Recap, Credits) and the Next Episode button marker.
- *
- * Interacts with:
- * - MainActivity.java: This activity calls the 'isIn...' and 'isAt...' methods
- * to determine when to display the skip buttons and calls the getter methods
- * to determine where to seek to when a button is pressed.
- * - PreferencesHelper.java: This class is used by MainActivity to load the
- * start and end times for these markers from the application's preferences,
- * which are then set using the setter methods below.
+ * SkipMarkers
+ * FUNCTION: A data class that holds the active, in-use skip segments
+ * (Intro, Recap, Credits) and the Next Episode marker.
+ * INTERACTS WITH: MainActivity.java (which sets/gets data from this class).
+ * PERSONALIZATION: The 'WINDOW_SECONDS' for the Next Episode button can be
+ * changed to show the button earlier or later.
  */
 public class SkipMarkers {
 
@@ -19,9 +15,9 @@ public class SkipMarkers {
      * (Intro, Recap, Credits). All times are stored in seconds (int).
      */
     public static class TimeRange {
-        // The start of the segment in seconds from the beginning of the video.
+        // # The start of the segment in seconds
         public final int start; 
-        // The end of the segment in seconds from the beginning of the video.
+        // # The end of the segment in seconds
         public final int end; 
 
         public TimeRange(int start, int end) {
@@ -35,6 +31,7 @@ public class SkipMarkers {
          * @return True if the position is between start (inclusive) and end (exclusive).
          */
         public boolean contains(long positionSeconds) {
+            // # Check if time is within the valid range
             return positionSeconds >= start && positionSeconds < end;
         }
         
@@ -57,14 +54,11 @@ public class SkipMarkers {
      * Constructor: Initializes all markers to an invalid (cleared) state.
      */
     public SkipMarkers() {
-        this.intro = new TimeRange(-1, -1);
-        this.recap = new TimeRange(-1, -1);
-        this.credits = new TimeRange(-1, -1);
-        this.nextEpisodeStart = -1;
+        clearAll();
     }
 
     /**
-     * Clears all segment markers.
+     * Clears all segment markers. Called when new media is loaded.
      */
     public void clearAll() {
         this.intro = new TimeRange(-1, -1);
@@ -73,7 +67,7 @@ public class SkipMarkers {
         this.nextEpisodeStart = -1;
     }
 
-    // --- Setter Methods (Called by MainActivity after loading preferences or API results) ---
+    // --- Setter Methods (Called by MainActivity) ---
 
     public void setIntro(int start, int end) {
         this.intro = new TimeRange(start, end);
@@ -92,15 +86,14 @@ public class SkipMarkers {
     }
     
     // --- Getter Methods (For performing the seek in MainActivity) ---
-
-    public int getIntroStart() { return intro.start; }
-    public int getIntroEnd() { return intro.end; }
-
-    public int getRecapStart() { return recap.start; }
-    public int getRecapEnd() { return recap.end; }
     
-    public int getCreditsStart() { return credits.start; }
-    public int getCreditsEnd() { return credits.end; }
+    // # FIX: Added getIntro() to return the TimeRange object, fixing build error
+    public TimeRange getIntro() { return intro; }
+    
+    // # FIX: Added getRecap() to return the TimeRange object, fixing build error
+    public TimeRange getRecap() { return recap; }
+    
+    public TimeRange getCredits() { return credits; }
     
     public int getNextEpisodeStart() { return nextEpisodeStart; }
 
@@ -112,7 +105,6 @@ public class SkipMarkers {
      * @return true if the button should be shown.
      */
     public boolean isInIntro(long positionSeconds) {
-        // Button shows only if the markers are valid AND the current time is in the range.
         return intro.isValid() && intro.contains(positionSeconds);
     }
 
@@ -130,15 +122,12 @@ public class SkipMarkers {
      * @return true if the button should be shown.
      */
     public boolean isAtNextEpisode(long positionSeconds) {
-        // FIX: Defines a window (in seconds) before the marker time to display the button.
-        // This gives the user time to click the button before the skip happens.
-        final int WINDOW_SECONDS = 10; 
+        // # Defines a 15-second window before the marker time to display the button.
+        final int WINDOW_SECONDS = 15; 
 
-        // 1. Check if the marker time is valid (set to a positive value).
-        // 2. Check if the current position is after the start of the display window.
-        // 3. Check if the current position is BEFORE the actual skip time (nextEpisodeStart).
+        // # Show the button if the marker is set and we are within the display window
         return nextEpisodeStart > 0 && 
                positionSeconds >= (nextEpisodeStart - WINDOW_SECONDS) &&
-               positionSeconds < nextEpisodeStart; 
+               positionSeconds < (nextEpisodeStart + WINDOW_SECONDS); // # Show for a bit after too
     }
 }
