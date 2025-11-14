@@ -57,7 +57,6 @@ import com.tvplayer.app.skipdetection.SkipDetectionResult.DetectionSource;
  * - SmartSkipManager.java (Running skip detection)
  * - SkipMarkers.java (Holding the active skip times)
  * - SettingsActivity.java (Launching the settings page)
- * FIX: This class now implements SkipDetectionCallback to fix a build error.
  */
 public class MainActivity extends AppCompatActivity implements Player.Listener, SkipDetectionCallback {
 
@@ -97,7 +96,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     
     // --- Runnables ---
     
-    // # FIX: Defined controlsTimeoutRunnable to fix build error
+    // # Runnable to hide controls after a timeout
     private final Runnable controlsTimeoutRunnable = new Runnable() {
         @Override
         public void run() {
@@ -167,8 +166,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         // # 1. Initialize helper classes
         preferencesHelper = new PreferencesHelper(this);
         skipMarkers = new SkipMarkers();
-        // # FIX: Initialize SmartSkipManager *without* the Player.
-        // # The Player object is not created yet.
+        // # Initialize SmartSkipManager *without* the Player.
         smartSkipManager = new SmartSkipManager(this, preferencesHelper);
 
         // # 2. Map UI elements to their IDs
@@ -240,7 +238,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     private void initializeViews() {
         playerView = findViewById(R.id.playerView);
         
-        // # FIX: Correct ID is 'customControlsOverlay'
+        // # ID: customControlsOverlay
         customControls = findViewById(R.id.customControlsOverlay); 
         skipButtonsOverlayContainer = findViewById(R.id.skipButtonsOverlayContainer);
 
@@ -316,7 +314,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         btnSkipIntro.setOnClickListener(v -> performSkip(SkipSegmentType.INTRO));
         btnSkipRecap.setOnClickListener(v -> performSkip(SkipSegmentType.RECAP));
         btnSkipCredits.setOnClickListener(v -> performSkip(SkipSegmentType.CREDITS));
-        // # FIX: Use NEXT_EPISODE enum which now exists
         btnNextEpisode.setOnClickListener(v -> performSkip(SkipSegmentType.NEXT_EPISODE)); 
         
         // # NEW: Cancel button hides the skip overlay
@@ -390,15 +387,11 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         
         skipMarkers.setNextEpisodeStart(preferencesHelper.getNextEpisodeStart());
 
-        // # Apply Subtitle Delay
-        // # FIX: This is the correct Media3 API call for subtitle delay
+        // # FIX: This is the correct Media3 API call for subtitle delay.
+        // # The method is on the Player object directly, not TrackSelectionParameters.
         try {
             int subtitleDelayMs = preferencesHelper.getSubtitleDelayMs();
-            TrackSelectionParameters params = player.getTrackSelectionParameters()
-                .buildUpon()
-                .setSubtitleDelayMs(subtitleDelayMs) // # This is the correct method
-                .build();
-            player.setTrackSelectionParameters(params);
+            player.setSubtitleDelayMs(subtitleDelayMs);
         } catch (Exception e) {
             Log.e(TAG, "Failed to apply subtitle delay", e);
         }
@@ -485,7 +478,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     @Override
     public void onDetectionComplete(SkipDetectionResult result) {
         if (result.isSuccess()) {
-            // # FIX: Use getDisplayName() which now exists
+            // # Use getDisplayName() which now exists
             Log.i(TAG, "Skip detection success from: " + result.getSource().getDisplayName());
             Toast.makeText(this, "Skip markers found via " + result.getSource().getDisplayName(), Toast.LENGTH_SHORT).show();
             
@@ -626,12 +619,12 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
 
         switch (type) {
             case INTRO:
-                // # FIX: Use getIntro().end to fix build error
+                // # Use getIntro().end to get the TimeRange object
                 seekToMs = skipMarkers.getIntro().end * 1000L;
                 toastMessage = "Skipping Intro";
                 break;
             case RECAP:
-                // # FIX: Use getRecap().end to fix build error
+                // # Use getRecap().end to get the TimeRange object
                 seekToMs = skipMarkers.getRecap().end * 1000L;
                 toastMessage = "Skipping Recap";
                 break;
@@ -729,7 +722,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
      * Resets the 5-second timer before the controls auto-hide.
      */
     private void resetControlsTimeout() {
-        // # FIX: Use controlsTimeoutRunnable to fix build error
+        // # Use controlsTimeoutRunnable
         controlsHandler.removeCallbacks(controlsTimeoutRunnable);
         controlsHandler.postDelayed(controlsTimeoutRunnable, CONTROLS_TIMEOUT_MS);
     }
@@ -801,7 +794,7 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         if (event.getAction() == KeyEvent.ACTION_DOWN && !customControls.isShown()) {
             // # Don't show controls if it's a media key that works while hidden
             if (event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE &&
-                event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY &&
+                event.getKeyCode() != KeyEvent.MEDIA_PLAY &&
                 event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PAUSE) {
                 
                 // # Also don't show controls if a skip button is visible
