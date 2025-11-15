@@ -2,14 +2,14 @@
 <!-- 
     Focus selector drawable for ImageButton controls (play/pause, rewind, fast-forward, etc.)
     This drawable provides visual feedback when navigating with a TV remote control.
-    
+
     REQUIRED FOR: TV/FireStick remote control navigation
     INTERACTS WITH: All ImageButton elements in activity_main.xml that use ControlButton styles
-    
+
     STATE BEHAVIORS:
     - state_focused="true": Shows a semi-transparent white circle background when button is highlighted via D-pad
     - default state: Transparent background when not focused
-    
+
     This file must be referenced in styles.xml ControlButton style via android:background attribute
 -->
 <selector xmlns:android="http://schemas.android.com/apk/res/android">

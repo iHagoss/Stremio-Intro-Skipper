@@ -40,9 +40,9 @@ public class SkipDetectionResult {
         INTRO_SKIPPER_API("Intro-Skipper API"),
         AUDIO_FINGERPRINT("Audio Scan"),
         NONE("None");
-        
+
         private final String displayName;
-        
+
         DetectionSource(String displayName) {
             this.displayName = displayName;
         }
@@ -68,7 +68,7 @@ public class SkipDetectionResult {
             this.startSeconds = startSeconds;
             this.endSeconds = endSeconds;
         }
-        
+
         public boolean isValid() {
             return endSeconds > startSeconds && startSeconds >= 0;
         }
@@ -112,7 +112,7 @@ public class SkipDetectionResult {
         }
         return new SkipDetectionResult(true, source, confidence, segmentList, null);
     }
-    
+
     /**
      * Creates a failed result.
      */
@@ -133,7 +133,7 @@ public class SkipDetectionResult {
     public String getErrorMessage() {
         return errorMessage;
     }
-    
+
     public float getConfidence() {
         return confidence;
     }
@@ -153,7 +153,7 @@ public class SkipDetectionResult {
         }
         return null;
     }
-    
+
     /**
      * Helper to check if a segment of a specific type exists.
      */

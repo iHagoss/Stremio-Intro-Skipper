@@ -27,21 +27,21 @@ import okhttp3.Response;
  * PERSONALIZATION: The STREMIO_API_URL can be changed to a different mirror or custom endpoint.
  */
 public class IntroSkipperStrategy implements SkipDetectionStrategy {
-    
+
     private static final String TAG = "IntroSkipperStrategy";
     // # This is a proxy/mirror of the official service.
     private static final String STREMIO_API_URL = "https://busy-jacinta-shugi-c2885b2e.koyeb.app";
     private static final int TIMEOUT_SECONDS = 8;
-    
+
     private final OkHttpClient httpClient;
     private final Gson gson;
     private final String customEndpoint;
-    
+
     // # Constructor 1: Uses the default Stremio API URL.
     public IntroSkipperStrategy() {
         this(null);
     }
-    
+
     // # Constructor 2: Allows a custom endpoint (useful for development or alternate mirrors).
     public IntroSkipperStrategy(String customEndpoint) {
         this.httpClient = new OkHttpClient.Builder()
@@ -52,18 +52,18 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
         this.gson = new Gson();
         this.customEndpoint = customEndpoint;
     }
-    
+
     // # Core detection logic: Constructs a URL and fetches skip segments from the API.
     @Override
     public SkipDetectionResult detect(MediaIdentifier mediaIdentifier) {
         String traktId = mediaIdentifier.getTraktId();
         Integer season = mediaIdentifier.getSeasonNumber();
         Integer episode = mediaIdentifier.getEpisodeNumber();
-        
+
         if (traktId == null || traktId.isEmpty() || season == null || episode == null) {
             return SkipDetectionResult.failed(DetectionSource.INTRO_SKIPPER_API, "Missing Trakt ID or episode info.");
         }
-        
+
         String baseUrl = customEndpoint != null ? customEndpoint : STREMIO_API_URL;
         // # Constructs the API URL for a specific episode using the Trakt ID.
         String url = String.format("%s/trakt/%s/%d/%d", baseUrl, traktId, season, episode);
@@ -76,7 +76,7 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
             if (response.isSuccessful() && response.body() != null) {
                 String json = response.body().string();
                 List<SkipSegment> segments = parseResponse(json);
-                
+
                 if (!segments.isEmpty()) {
                     Log.d(TAG, "Intro-Skipper detection successful with " + segments.size() + " segments");
                     // # Returns a high-confidence result
@@ -97,7 +97,7 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
             return SkipDetectionResult.failed(DetectionSource.INTRO_SKIPPER_API, "Network error: " + e.getMessage());
         }
     }
-    
+
     // # Helper method to parse the JSON response from the API.
     private List<SkipSegment> parseResponse(String json) {
         List<SkipSegment> segments = new ArrayList<>();
@@ -110,7 +110,7 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
                     String typeStr = segment.has("skipType") ? segment.get("skipType").getAsString().toLowerCase() : "";
                     double start = segment.has("showSkipPromptAt") ? segment.get("showSkipPromptAt").getAsDouble() : 0;
                     double end = segment.has("hideSkipPromptAt") ? segment.get("hideSkipPromptAt").getAsDouble() : 0;
-                    
+
                     if (start >= 0 && end > start) {
                         if (typeStr.contains("intro") || typeStr.contains("opening")) {
                             segments.add(new SkipSegment(SkipSegmentType.INTRO, (int) start, (int) end));
@@ -127,17 +127,17 @@ public class IntroSkipperStrategy implements SkipDetectionStrategy {
         }
         return segments;
     }
-    
+
     @Override
     public String getStrategyName() {
         return "Intro-Skipper (Stremio/Jellyfin)";
     }
-    
+
     @Override
     public boolean isAvailable() {
         return true; // # The API is generally always available to try.
     }
-    
+
     @Override
     public int getPriority() {
         // # FIX: Set to 400 for P1 Priority (Category 3: Community Servers).

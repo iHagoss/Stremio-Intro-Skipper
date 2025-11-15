@@ -29,17 +29,17 @@ import okhttp3.Response;
  * You can adjust the times (e.g., '0, 90' for intro) to be more or less aggressive.
  */
 public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
-    
+
     private static final String TAG = "MetadataHeuristicStrategy";
     private static final int TIMEOUT_SECONDS = 8;
-    
+
     // # Base URL for Trakt API lookup (used to get runtime for heuristics).
     private static final String TRAKT_API_URL = "https://api.trakt.tv"; 
-    
+
     private final PreferencesHelper prefsHelper;
     private final OkHttpClient httpClient;
     private final Gson gson;
-    
+
     public MetadataHeuristicStrategy(PreferencesHelper prefsHelper) {
         this.prefsHelper = prefsHelper;
         // # HTTP client setup with a reasonable timeout for network requests.
@@ -50,33 +50,33 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
             .build();
         this.gson = new Gson();
     }
-    
+
     // # Core detection logic: Fetches runtime and applies time-based guesswork.
     @Override
     public SkipDetectionResult detect(MediaIdentifier mediaIdentifier) {
         // # Use runtime from the media identifier first, if available.
         long runtimeSeconds = mediaIdentifier.getRuntimeSeconds();
         boolean isTvShow = mediaIdentifier.getSeasonNumber() != null && mediaIdentifier.getEpisodeNumber() != null;
-        
+
         // # If runtime is not available, try to fetch it from Trakt using an ID.
         if (runtimeSeconds <= 0 && isAvailable()) {
             runtimeSeconds = fetchRuntimeFromTrakt(mediaIdentifier, isTvShow);
         }
-        
+
         // # If runtime is still not valid, the strategy cannot proceed.
         if (runtimeSeconds <= 0) {
             return SkipDetectionResult.failed(DetectionSource.METADATA_HEURISTIC, "No valid runtime found or fetched.");
         }
-        
+
         List<SkipSegment> segments = new ArrayList<>();
-        
+
         // # Apply simple rules (heuristics) based on the total length of the content.
         applyHeuristics(segments, runtimeSeconds, isTvShow);
-        
+
         if (segments.isEmpty()) {
             return SkipDetectionResult.failed(DetectionSource.METADATA_HEURISTIC, "Heuristics did not generate any skip segments.");
         }
-        
+
         // # Returns a result based on calculated guesses. Confidence is moderate.
         return SkipDetectionResult.success(
             DetectionSource.METADATA_HEURISTIC,
@@ -84,17 +84,17 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
             segments.toArray(new SkipSegment[0])
         );
     }
-    
+
     // # Helper to fetch media runtime from the Trakt API.
     private long fetchRuntimeFromTrakt(MediaIdentifier mediaIdentifier, boolean isTvShow) {
         String traktApiKey = prefsHelper.getTraktApiKey();
         if (traktApiKey.isEmpty()) {
             return 0; // # Cannot use Trakt without a key
         }
-        
+
         String url;
         String traktId = mediaIdentifier.getTraktId();
-        
+
         if (traktId != null && !traktId.isEmpty()) {
             if (isTvShow) {
                 // # Trakt API endpoint for a specific episode.
@@ -107,7 +107,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
         } else {
             return 0; // # No ID to look up
         }
-        
+
         Request request = new Request.Builder()
             .url(url)
             .header("Content-Type", "application/json")
@@ -120,7 +120,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
             if (response.isSuccessful() && response.body() != null) {
                 String json = response.body().string();
                 JsonObject jsonObject = gson.fromJson(json, JsonObject.class);
-                
+
                 // # Trakt runtime is usually returned in minutes, convert to seconds.
                 if (jsonObject.has("runtime")) {
                     return jsonObject.get("runtime").getAsLong() * 60; 
@@ -131,13 +131,13 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
         }
         return 0;
     }
-    
+
     // # Simple, hardcoded rules to guess where segments might be based on total runtime.
     private void applyHeuristics(List<SkipSegment> segments, long runtimeSeconds, boolean isTvShow) {
         if (!isTvShow) {
             return; // # Heuristics are generally less reliable for movies
         }
-        
+
         if (runtimeSeconds >= 20 * 60) { // # 20+ minute episode
             // # Assume a 0-90 second intro.
             segments.add(new SkipSegment(SkipSegmentType.INTRO, 0, 90));
@@ -156,12 +156,12 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
             }
         }
     }
-    
+
     @Override
     public String getStrategyName() {
         return "Metadata-Based Heuristics";
     }
-    
+
     @Override
     public boolean isAvailable() {
         // # Strategy is available if the user has provided at least one API key.
@@ -169,7 +169,7 @@ public class MetadataHeuristicStrategy implements SkipDetectionStrategy {
                !prefsHelper.getTraktApiKey().isEmpty() ||
                !prefsHelper.getTvdbApiKey().isEmpty();
     }
-    
+
     @Override
     public int getPriority() {
         // # FIX: Set to 500 for P1 Priority (Category 1: Chapter/Metadata).

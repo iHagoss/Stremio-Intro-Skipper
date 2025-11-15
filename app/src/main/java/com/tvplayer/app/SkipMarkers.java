@@ -34,7 +34,7 @@ public class SkipMarkers {
             // # Check if time is within the valid range
             return positionSeconds >= start && positionSeconds < end;
         }
-        
+
         /**
          * Checks if the time range is valid (start is non-negative and before end).
          * @return True if the marker is set correctly.
@@ -84,17 +84,17 @@ public class SkipMarkers {
     public void setNextEpisodeStart(int start) {
         this.nextEpisodeStart = start;
     }
-    
+
     // --- Getter Methods (For performing the seek in MainActivity) ---
-    
+
     // # FIX: Added getIntro() to return the TimeRange object, fixing build error
     public TimeRange getIntro() { return intro; }
-    
+
     // # FIX: Added getRecap() to return the TimeRange object, fixing build error
     public TimeRange getRecap() { return recap; }
-    
+
     public TimeRange getCredits() { return credits; }
-    
+
     public int getNextEpisodeStart() { return nextEpisodeStart; }
 
     // --- Logic Methods (For controlling button visibility in MainActivity) ---

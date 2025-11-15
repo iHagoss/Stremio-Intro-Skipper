@@ -23,7 +23,7 @@
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipRecap"
             android:nextFocusUp="@id/btnNextEpisode" />
-            
+
         <Button android:id="@+id/btnSkipRecap" style="@style/SkipButton" android:text="@string/skip_recap" android:visibility="gone"
             android:focusable="true" android:clickable="true"
             android:nextFocusDown="@id/btnSkipCredits"
@@ -45,7 +45,7 @@
             android:nextFocusUp="@id/btnSkipCancel" />
 
     </LinearLayout>
-    
+
     <LinearLayout
         android:id="@+id/customControlsOverlay"
         android:layout_width="match_parent"
@@ -74,7 +74,7 @@
                 android:id="@+id/tvCurrentTime"
                 style="@style/TimeText.Bold"
                 android:text="00:00:00" />
-            
+
             <TextView
                 android:id="@+id/tvTotalTime"
                 style="@style/TimeText.Bold"
@@ -86,19 +86,19 @@
                 android:layout_width="0dp"
                 android:layout_height="1dp"
                 android:layout_weight="1" />
-            
+
             <TextView
                 android:id="@+id/tvRemainingLabel"
                 style="@style/TimeLabelText"
                 android:text="@string/remaining_time"
                 android:layout_marginEnd="10dp" />
-            
+
             <TextView
                 android:id="@+id/tvRemainingTime"
                 style="@style/TimeText"
                 android:text="00:00:00"
                 android:layout_marginEnd="10dp" />
-            
+
             <TextView
                 android:id="@+id/tvFinishLabel"
                 style="@style/TimeLabelText"
@@ -109,9 +109,9 @@
                 android:id="@+id/tvFinishTime"
                 style="@style/TimeText"
                 android:text="00:00" />
-            
+
         </LinearLayout>
-        
+
         <ProgressBar
             android:id="@+id/progressBar"
             style="?android:attr/progressBarStyleHorizontal"
@@ -160,10 +160,10 @@
 
             <ImageButton android:id="@+id/btnSubtitleDelay" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_edit" android:contentDescription="@string/subtitle_delay"
                 android:focusable="true" android:clickable="true" />
-            
+
             <ImageButton android:id="@+id/btnButton4" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_report_image" android:contentDescription="Button 4" 
                 android:focusable="true" android:clickable="true" />
-            
+
             <ImageButton android:id="@+id/btnButton5" style="@style/ControlButton.Tiny" android:src="@android:drawable/ic_menu_crop" android:contentDescription="Button 5" 
                 android:focusable="true" android:clickable="true" />
 

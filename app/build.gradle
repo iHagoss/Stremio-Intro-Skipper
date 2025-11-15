@@ -1,31 +1,18 @@
-/*
- * build.gradle (Module :app)
- * FUNCTION: Declares the configuration for the Android application module.
- * INTERACTS WITH: The root build.gradle, settings.gradle, and the entire project structure.
- * PERSONALIZATION:
- * - 'namespace', 'applicationId', 'versionCode', 'versionName' can be changed for rebranding.
- * - 'minSdk' and 'targetSdk' control device compatibility.
- * - 'dependencies' section lists all libraries.
- */
 plugins {
     id 'com.android.application'
 }
 
 android {
-    // # PERSONALIZATION: Change 'com.tvplayer.app' to your app's unique package name.
     namespace 'com.tvplayer.app'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
-        // # PERSONALIZATION: Change this to your app's unique ID.
         applicationId "com.tvplayer.app"
-        minSdk 21
-        targetSdk 34
-        // # PERSONALIZATION: Increment these when releasing new versions.
+        minSdk 22
+        targetSdk 35
         versionCode 1
         versionName "1.0"
-
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        multiDexEnabled true
     }
 
     buildTypes {
@@ -34,43 +21,49 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
-    
-    // # This is required by some of the libraries
-    packagingOptions {
-        exclude 'META-INF/kotlin-coroutines-core.kotlin_module'
+
+    lintOptions {
+        abortOnError false
     }
 }
 
+repositories {
+    google()
+    mavenCentral()
+}
+
+def media3_version = "1.7.1"
+def leanback_version = "1.1.0-rc02"
+
 dependencies {
-    // # Core Android UI libraries
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.10.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    
-    // # AndroidX Preferences for the settings screen
+    implementation 'com.google.android.material:material:1.9.0'
+
+    implementation "androidx.leanback:leanback:$leanback_version"
     implementation 'androidx.preference:preference:1.2.1'
 
-    // # --- Media3 (ExoPlayer) Libraries ---
-    // # FIX: Updated all Media3 libraries from 1.1.1 to 1.3.1.
-    // # This is necessary to fix the build error, as the 'setSubtitleDelay' method
-    // # (used in your original MainActivity) was not added until version 1.2.0.
-    // # PERSONALIZATION: You can update '1.3.1' to a newer stable version if needed.
-    implementation 'androidx.media3:media3-exoplayer:1.3.1'
-    implementation 'androidx.media3:media3-ui:1.3.1'
-    implementation 'androidx.media3:media3-session:1.3.1'
+    implementation "androidx.media3:media3-exoplayer:$media3_version"
+    implementation "androidx.media3:media3-ui:$media3_version"
+    implementation "androidx.media3:media3-common:$media3_version"
+    implementation "androidx.media3:media3-exoplayer-smoothstreaming:$media3_version"
+    implementation "androidx.media3:media3-container:$media3_version"
+    implementation "androidx.media3:media3-session:$media3_version"
+    implementation "androidx.media3:media3-exoplayer-dash:$media3_version"
+    implementation "androidx.media3:media3-datasource-okhttp:$media3_version"
+    implementation "androidx.media3:media3-ui-compose:$media3_version"
+    implementation "androidx.media3:media3-exoplayer-hls:$media3_version"
+    implementation "androidx.media3:media3-exoplayer-workmanager:$media3_version"
+    implementation "androidx.media3:media3-extractor:$media3_version"
 
-    // # HTTP client (for API strategies)
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    
-    // # JSON parser (for API strategies)
+    implementation 'com.squareup.okhttp3:okhttp:4.11.0'
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    // # Testing libraries (unchanged)
-    testImplementation 'junit:junit:4.13.2'
-    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.22"
+    implementation 'androidx.multidex:multidex:2.0.1'
 }

@@ -17,7 +17,7 @@ import androidx.preference.PreferenceManager;
  * - preferences.xml: Contains the keys and default values used here.
  */
 public class PreferencesHelper {
-    
+
     // The main object used to read and write preferences
     private final SharedPreferences prefs;
 
@@ -30,7 +30,7 @@ public class PreferencesHelper {
     }
 
     // --- API KEY GETTERS ---
-    
+
     public String getTraktApiKey() {
         return prefs.getString("trakt_api_key", "");
     }
@@ -44,7 +44,7 @@ public class PreferencesHelper {
     }
 
     // --- DEBRID KEY GETTERS ---
-    
+
     public String getRealDebridKey() {
         return prefs.getString("real_debrid_key", "");
     }
@@ -59,7 +59,7 @@ public class PreferencesHelper {
 
     // --- MANUAL SKIP TIMING GETTERS (in seconds) ---
     // Note: EditTextPreference stores values as Strings, so we must parse them.
-    
+
     public int getIntroStart() {
         return parseIntSafe(prefs.getString("intro_start", "0"), 0);
     }
@@ -90,7 +90,7 @@ public class PreferencesHelper {
     }
 
     // --- AUTO-SKIP SETTINGS ---
-    
+
     public boolean isAutoSkipIntro() {
         return prefs.getBoolean("auto_skip_intro", false);
     }
@@ -104,7 +104,7 @@ public class PreferencesHelper {
     }
 
     // --- DELAY SETTINGS (in milliseconds) ---
-    
+
     public int getAudioDelayMs() {
         return parseIntSafe(prefs.getString("audio_delay_ms", "0"), 0);
     }
