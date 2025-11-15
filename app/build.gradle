@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "com.tvplayer.app"
-        minSdk 22
+        minSdk 21
         targetSdk 35
         versionCode 1
         versionName "1.0"
@@ -18,18 +18,23 @@ android {
     buildTypes {
         release {
             minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     lintOptions {
         abortOnError false
     }
+   
+   buildFeatures {
+        viewBinding true
+  }
 }
 
 repositories {
@@ -37,7 +42,7 @@ repositories {
     mavenCentral()
 }
 
-def media3_version = "1.7.1"
+def media3_version = "1.8.0"
 def leanback_version = "1.1.0-rc02"
 
 dependencies {
@@ -64,6 +69,7 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.11.0'
     implementation 'com.google.code.gson:gson:2.10.1'
 
-    implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.22"
+    implementation "org.jetbrains.kotlin:kotlin-stdlib:2.0.20"
     implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'androidx.core:core-ktx:1.12.0'
 }
