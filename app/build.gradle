@@ -1,5 +1,6 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
@@ -8,7 +9,7 @@ android {
 
     defaultConfig {
         applicationId "com.tvplayer.app"
-        minSdk 21
+        minSdk 22
         targetSdk 35
         versionCode 1
         versionName "1.0"
@@ -28,19 +29,13 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    lintOptions {
-        abortOnError false
+    kotlinOptions {
+        jvmTarget = '17'
     }
-   
-   buildFeatures {
-        viewBinding true
-  }
-}
 
-repositories {
-    google()
-    mavenCentral()
-}
+    buildFeatures {
+        viewBinding true
+    }
 
 def media3_version = "1.8.0"
 def leanback_version = "1.1.0-rc02"
