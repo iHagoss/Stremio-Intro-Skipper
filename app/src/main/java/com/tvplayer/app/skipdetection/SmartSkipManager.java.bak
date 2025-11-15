@@ -33,38 +33,18 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * SmartSkipManager
- * FUNCTION: Coordinates all skip detection strategies using a tiered priority system.
- *           Cache is checked first, then all strategies run concurrently, and the
- *           best result is selected based on TIER (priority) first, then confidence.
+ * FUNCTION: Coordinates all skip detection strategies, manages execution,
+ * prioritization, caching, and returns the best result to MainActivity.
  * INTERACTS WITH: All *Strategy.java files, MainActivity.java, PreferencesHelper.java.
- * 
- * PRIORITY TIERS (Reliability Levels):
- *   - Tier 600: Cache (checked synchronously before other strategies)
- *   - Tier 500: Chapter Markers & Metadata Heuristics (most reliable)
- *   - Tier 400: Community APIs (IntroSkipper, IntroHater) (moderately reliable)
- *   - Tier 300: Audio Fingerprinting (when implemented)
- *   - Tier 100: Manual User Preferences (final failsafe)
- * 
- * SELECTION LOGIC:
- *   1. Higher tier (priority) always wins over lower tier, regardless of confidence
- *   2. Within same tier, highest confidence wins
- *   3. Manual preferences only surface when all higher tiers fail
- * 
- * FIXED: Tiered priority system ensures reliable strategies are preferred over
- *        manual fallbacks, and metadata strategies have time to populate.
- * 
  * PERSONALIZATION:
- * - DETECTION_TIMEOUT_MS: Max wait time for strategies (default 10 seconds).
- * - METADATA_WAIT_MS: Additional wait for chapter metadata to populate (default 2 seconds).
- * - EXECUTOR_THREADS: Number of concurrent strategy executions.
+ * - DETECTION_TIMEOUT_MS: Change this to wait longer or shorter for API results (in milliseconds).
+ * - EXECUTOR_THREADS: Change this to allow more/fewer strategies to run at the same time.
  */
 public class SmartSkipManager {
 
     private static final String TAG = "SmartSkipManager";
     // # Max time (10 seconds) to wait for all strategies to finish.
     private static final int DETECTION_TIMEOUT_MS = 10000;
-    // # Additional wait time for metadata-driven strategies (e.g., chapters) to populate
-    private static final int METADATA_WAIT_MS = 2000;
     // # Number of strategies to run at the same time.
     private static final int EXECUTOR_THREADS = 4;
 
@@ -97,27 +77,18 @@ public class SmartSkipManager {
         this.chapterStrategy = new ChapterStrategy();
 
         // # Add all strategies to the list
-        // # NOTE: All strategies run CONCURRENTLY, not sequentially
-        // # Priority determines which result wins when multiple strategies succeed
-        // # Higher tier (priority number) always beats lower tier regardless of confidence
-        
-        // # Tier 100: Manual User Preferences (lowest tier - final failsafe)
+        // # P1 Priority 5 (Lowest)
         this.strategies.add(new ManualPreferenceStrategy(prefsHelper));
-        
-        // # Tier 300: Audio Fingerprinting (currently not implemented)
+        // # P1 Priority 4
         this.strategies.add(new AudioFingerprintStrategy()); 
-        
-        // # Tier 400: Community APIs (moderately reliable)
+        // # P1 Priority 3
         this.strategies.add(new IntroHaterStrategy());
         this.strategies.add(new IntroSkipperStrategy());
-        
-        // # Tier 500: Chapter Markers & Metadata (highest tier - most reliable)
+        // # P1 Priority 1 (Highest)
         this.strategies.add(new MetadataHeuristicStrategy(prefsHelper));
         this.strategies.add(this.chapterStrategy); // # Add the instance we saved
 
-        // # Sort strategies by priority (highest number first) for logging
-        // # IMPORTANT: This sort order is just for display/logging
-        // # The actual winner is determined by tier-aware selection logic in the concurrent section
+        // # Sort the strategies based on their priority score (Highest number = Highest priority)
         Collections.sort(this.strategies, Comparator.comparingInt(SkipDetectionStrategy::getPriority).reversed());
 
         // # Log the final sorted order for debugging
@@ -181,9 +152,8 @@ public class SmartSkipManager {
         // # Clear any old chapter data before starting
         chapterStrategy.clearCapturedChapters();
 
-        // # Variables to hold the best result and its strategy priority
+        // # Variables to hold the best result
         final AtomicReference<SkipDetectionResult> bestResult = new AtomicReference<>(null);
-        final AtomicReference<Integer> bestPriority = new AtomicReference<>(0);
         final List<Future<?>> futures = new ArrayList<>();
 
         // # 2. Run all strategies concurrently
@@ -200,38 +170,13 @@ public class SmartSkipManager {
                     SkipDetectionResult result = strategy.detect(mediaIdentifier);
 
                     if (result.isSuccess()) {
-                        int strategyPriority = strategy.getPriority();
-                        Log.i(TAG, "Success from " + strategy.getStrategyName() + 
-                              " (Tier: " + strategyPriority + ", Conf: " + result.getConfidence() + ")");
+                        Log.i(TAG, "Success from " + strategy.getStrategyName() + " (Conf: " + result.getConfidence() + ")");
 
                         // # Critical Section: Only one thread can update the best result
                         synchronized (bestResult) {
-                            SkipDetectionResult current = bestResult.get();
-                            Integer currentPriority = bestPriority.get();
-                            
-                            // # TIERED SELECTION LOGIC:
-                            // # 1. If no result yet, use this one
-                            // # 2. If new strategy has HIGHER tier (priority), it wins regardless of confidence
-                            // # 3. If same tier, higher confidence wins
-                            boolean shouldReplace = false;
-                            
-                            if (current == null) {
-                                shouldReplace = true;
-                            } else if (strategyPriority > currentPriority) {
-                                // # Higher tier always wins
-                                shouldReplace = true;
-                                Log.i(TAG, "Higher tier wins: " + strategy.getStrategyName() + 
-                                      " (Tier " + strategyPriority + ") beats (Tier " + currentPriority + ")");
-                            } else if (strategyPriority == currentPriority && 
-                                      result.getConfidence() > current.getConfidence()) {
-                                // # Same tier, higher confidence wins
-                                shouldReplace = true;
-                                Log.i(TAG, "Same tier, higher confidence wins: " + strategy.getStrategyName());
-                            }
-                            
-                            if (shouldReplace) {
+                            // # If no result is set, or if this new result is better, update it
+                            if (bestResult.get() == null || result.getConfidence() > bestResult.get().getConfidence()) {
                                 bestResult.set(result);
-                                bestPriority.set(strategyPriority);
                                 Log.i(TAG, "New best result set by " + strategy.getStrategyName());
                             }
                         }
@@ -277,9 +222,8 @@ public class SmartSkipManager {
             }
         }
 
-        // # 5. Final Result Determination with Tiered Priority System
-        // # FIX: Select winner based on TIER (priority) first, then confidence
-        SkipDetectionResult finalResult = selectBestResultByTier(bestResult.get());
+        // # 5. Final Result Determination
+        SkipDetectionResult finalResult = bestResult.get();
 
         // # If no strategy succeeded, create a 'failed' result
         if (finalResult == null) {
@@ -292,21 +236,6 @@ public class SmartSkipManager {
         cacheStrategy.cacheResult(mediaIdentifier, finalResult);
 
         return finalResult;
-    }
-
-    /**
-     * selectBestResultByTier
-     * FUNCTION: Pass-through method - tier selection now happens in concurrent section.
-     * FIX: The tiered selection logic has been moved to the concurrent execution loop
-     *      where each result is compared by tier first, then confidence.
-     * 
-     * @param currentBest The result selected by tier-aware logic
-     * @return The final result (already tier-selected)
-     */
-    private SkipDetectionResult selectBestResultByTier(SkipDetectionResult currentBest) {
-        // # The tier-based selection now happens in the concurrent section above,
-        // # so this method just passes through the already-selected best result.
-        return currentBest;
     }
 
     // # Public methods for cache management from Settings

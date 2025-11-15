@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -79,14 +78,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     // --- Skip Button Components ---
     private Button btnSkipIntro, btnSkipRecap, btnSkipCredits, btnNextEpisode;
     private Button btnSkipCancel; // # NEW: Cancel Button (Feature P2/Cancel)
-
-    // --- Media Info Display Components ---
-    // # FIXED: Added TextViews to display title and episode info in media controller
-    private TextView tvMediaTitle, tvEpisodeInfo;
-
-    // --- Volume Control Components ---
-    // # FIXED: Added AudioManager for D-Pad volume control
-    private AudioManager audioManager;
 
     // --- Time/Scrubbing State ---
     private Handler timeUpdateHandler = new Handler(Looper.getMainLooper());
@@ -177,8 +168,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         skipMarkers = new SkipMarkers();
         // # Initialize SmartSkipManager *without* the Player.
         smartSkipManager = new SmartSkipManager(this, preferencesHelper);
-        // # FIXED: Initialize AudioManager for volume control
-        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
         // # 2. Map UI elements to their IDs
         initializeViews();
@@ -259,11 +248,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         tvRemainingTime = findViewById(R.id.tvRemainingTime);
         tvFinishTime = findViewById(R.id.tvFinishTime);
         progressBar = findViewById(R.id.progressBar);
-
-        // # Media Info Display
-        // # FIXED: Find the new TextViews for showing title and episode info
-        tvMediaTitle = findViewById(R.id.tvMediaTitle);
-        tvEpisodeInfo = findViewById(R.id.tvEpisodeInfo);
 
         // # Control Buttons
         btnPlayPause = findViewById(R.id.btnPlayPause);
@@ -417,8 +401,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     /**
      * Initiates the Smart Skip detection process for the current media.
      * This is called once the player is ready.
-     * FIXED: Now extracts metadata from URI and player metadata, including
-     *        season/episode info parsed from filename patterns (S01E01, etc.)
      */
     private void startSkipDetection() {
         if (player == null || player.getDuration() <= 0) return;
@@ -426,68 +408,16 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
         // # Pass the (now ready) player to the manager
         smartSkipManager.rebindPlayer(player);
 
-        // # Get the current media URI
-        Uri mediaUri = getIntent().getData();
-        if (mediaUri == null && player.getCurrentMediaItem() != null) {
-            mediaUri = player.getCurrentMediaItem().localConfiguration != null ?
-                      player.getCurrentMediaItem().localConfiguration.uri : null;
-        }
-
-        // # Parse metadata from filename/URI
-        MediaMetadataParser.ParsedMetadata parsed = MediaMetadataParser.parseFromUri(mediaUri);
-
-        // # Get title from player metadata, fallback to parsed show name
-        String title = "Unknown";
-        if (player.getMediaMetadata().title != null) {
-            title = player.getMediaMetadata().title.toString();
-        } else if (parsed.showName != null) {
-            title = parsed.showName;
-        }
-
-        // # Get show name and episode title from Media3 metadata if available
-        String showName = parsed.showName;
-        if (player.getMediaMetadata().albumTitle != null) {
-            // # albumTitle can represent the series name for TV shows
-            showName = player.getMediaMetadata().albumTitle.toString();
-        }
-
-        // # Build MediaIdentifier with all extracted metadata
-        MediaIdentifier.Builder builder = new MediaIdentifier.Builder()
-            .setTitle(title)
-            .setRuntimeSeconds(player.getDuration() / 1000);
-
-        // # Add TV show specific metadata if available
-        if (parsed.isTvShow) {
-            builder.setShowName(showName)
-                   .setSeasonNumber(parsed.seasonNumber)
-                   .setEpisodeNumber(parsed.episodeNumber);
-            Log.i(TAG, "Detected TV Show: " + showName + " S" + 
-                  parsed.seasonNumber + "E" + parsed.episodeNumber);
-            
-            // # FIXED: Update UI to show title and episode info
-            updateMediaInfoDisplay(showName != null ? showName : title, 
-                                   parsed.seasonNumber, 
-                                   parsed.episodeNumber);
-        } else {
-            // # For movies or unknown media, just show the title
-            updateMediaInfoDisplay(title, null, null);
-        }
-
-        // # Extract IDs from Media3 extras if available
-        // # Note: These would need to be set by the calling app (Stremio, etc.)
-        if (player.getMediaMetadata().extras != null) {
-            String traktId = player.getMediaMetadata().extras.getString("trakt_id");
-            String tmdbId = player.getMediaMetadata().extras.getString("tmdb_id");
-            String tvdbId = player.getMediaMetadata().extras.getString("tvdb_id");
-            String imdbId = player.getMediaMetadata().extras.getString("imdb_id");
-            
-            if (traktId != null) builder.setTraktId(traktId);
-            if (tmdbId != null) builder.setTmdbId(tmdbId);
-            if (tvdbId != null) builder.setTvdbId(tvdbId);
-            if (imdbId != null) builder.setImdbId(imdbId);
-        }
-
-        MediaIdentifier mediaIdentifier = builder.build();
+        // # Create the MediaIdentifier with all known info
+        MediaIdentifier mediaIdentifier = new MediaIdentifier.Builder()
+            .setTitle(player.getMediaMetadata().title != null ? player.getMediaMetadata().title.toString() : "Unknown")
+            .setRuntimeSeconds(player.getDuration() / 1000)
+            // # TODO: Add Trakt/TMDB/TVDB IDs here when available
+            // .setTraktId("...")
+            // .setTmdbId("...")
+            // .setSeasonNumber(1)
+            // .setEpisodeNumber(1)
+            .build();
 
         // # Start the async detection. 'this' (MainActivity) is the callback.
         smartSkipManager.detectSkipSegmentsAsync(mediaIdentifier, this);
@@ -760,41 +690,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     // =========================================================================
 
     /**
-     * updateMediaInfoDisplay
-     * FUNCTION: Updates the media title and episode info TextViews in the controller UI.
-     * FIXED: New method to display media metadata to the user.
-     * @param title The media title or show name
-     * @param season The season number (null for movies)
-     * @param episode The episode number (null for movies)
-     */
-    private void updateMediaInfoDisplay(String title, Integer season, Integer episode) {
-        if (tvMediaTitle == null || tvEpisodeInfo == null) return;
-
-        // # FIXED: Only show title if we have valid data
-        if (title != null && !title.isEmpty() && !title.equals("Unknown")) {
-            tvMediaTitle.setText(title);
-            tvMediaTitle.setVisibility(View.VISIBLE);
-            // # Enable marquee scrolling for long titles
-            tvMediaTitle.setSelected(true);
-        } else {
-            // # Hide title if unknown
-            tvMediaTitle.setVisibility(View.GONE);
-        }
-        
-        // # Set episode info if it's a TV show with valid data
-        if (season != null && episode != null && season > 0 && episode > 0) {
-            String episodeText = String.format(Locale.getDefault(), 
-                "Season %d Episode %d", season, episode);
-            tvEpisodeInfo.setText(episodeText);
-            tvEpisodeInfo.setVisibility(View.VISIBLE);
-            Log.d(TAG, "Displaying: " + title + " - " + episodeText);
-        } else {
-            // # Hide episode info for movies or when data is unavailable
-            tvEpisodeInfo.setVisibility(View.GONE);
-        }
-    }
-
-    /**
      * Shows the custom control overlay and starts the auto-hide timer.
      */
     private void showControls() {
@@ -890,51 +785,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
     }
 
     /**
-     * adjustVolume
-     * FUNCTION: Adjusts the media stream volume independently from system volume.
-     * FIXED: Implements D-Pad volume control without interfering with system volume.
-     * @param direction AudioManager.ADJUST_RAISE or AudioManager.ADJUST_LOWER
-     */
-    private void adjustVolume(int direction) {
-        if (audioManager == null) return;
-
-        // # Adjust the MUSIC stream volume (not system volume)
-        // # FLAG_SHOW_UI = 0 means don't show the system volume UI
-        audioManager.adjustStreamVolume(
-            AudioManager.STREAM_MUSIC,
-            direction,
-            0  // # No flags - don't show system UI
-        );
-
-        // # Get the current volume level and max volume
-        int currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int volumePercent = (int) ((currentVolume * 100.0) / maxVolume);
-
-        // # Show our custom volume indicator
-        showVolumeIndicator(volumePercent);
-
-        Log.d(TAG, "Volume adjusted: " + volumePercent + "%");
-    }
-
-    /**
-     * showVolumeIndicator
-     * FUNCTION: Shows a non-intrusive volume indicator on screen.
-     * FIXED: Displays volume level without obstructing playback or pausing.
-     * @param volumePercent Volume percentage (0-100)
-     */
-    private void showVolumeIndicator(int volumePercent) {
-        // # Show a small toast with volume level
-        // # This is non-intrusive and doesn't pause playback
-        String volumeText = "Volume: " + volumePercent + "%";
-        Toast.makeText(this, volumeText, Toast.LENGTH_SHORT).show();
-        
-        // # Note: For a more elegant solution, you could add a TextView overlay
-        // # to the layout (like tvVolumeIndicator) and show/hide it with animation
-        // # For now, Toast is the simplest non-intrusive approach
-    }
-
-    /**
      * Main handler for all physical key presses (Remote/D-Pad).
      */
     @Override
@@ -1003,25 +853,6 @@ public class MainActivity extends AppCompatActivity implements Player.Listener, 
                         timeUpdateHandler.post(scrubRunnable);
                     }
                     return true;
-
-                // # FIXED: Handle D-Pad UP for volume increase
-                case KeyEvent.KEYCODE_DPAD_UP:
-                    if (!customControls.isShown() || !skipButtonsOverlayContainer.isShown()) {
-                        // # Only handle volume if controls/skip buttons are not focused
-                        // # This allows normal navigation when UI is visible
-                        adjustVolume(AudioManager.ADJUST_RAISE);
-                        return true;
-                    }
-                    return super.dispatchKeyEvent(event); // # Let system handle navigation
-
-                // # FIXED: Handle D-Pad DOWN for volume decrease
-                case KeyEvent.KEYCODE_DPAD_DOWN:
-                    if (!customControls.isShown() || !skipButtonsOverlayContainer.isShown()) {
-                        // # Only handle volume if controls/skip buttons are not focused
-                        adjustVolume(AudioManager.ADJUST_LOWER);
-                        return true;
-                    }
-                    return super.dispatchKeyEvent(event); // # Let system handle navigation
             }
         }
 
