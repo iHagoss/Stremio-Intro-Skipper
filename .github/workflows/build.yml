@@ -11,53 +11,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    env:
-      JAVA_VERSION: '17'
-      ANDROID_SDK_ROOT: /usr/local/share/android-sdk
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-      
-      - name: Set up JDK
+
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: 17
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v2
-        with:
-          api-level: 33
-          build-tools: 33.0.0
-          cache: gradle
-
-      - name: Accept SDK licenses
-        run: yes | sdkmanager --licenses
-
-      - name: Fix Gradle wrapper permissions
+      - name: Fix Gradle wrapper
         run: |
           sudo apt-get update && sudo apt-get install -y dos2unix
-          dos2unix ./gradlew
-          chmod +x ./gradlew
+          dos2unix gradlew
+          chmod +x gradlew
           test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle-wrapper.jar missing"; exit 1; }
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload Debug APK Artifact
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Build Release APK (optional)
-        if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip release]')
-        run: ./gradlew assembleRelease --stacktrace
-
-      - name: Upload Release APK Artifact
-        if: success() && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip release]')
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
