@@ -1,6 +1,5 @@
 package com.tvplayer.app;
 
-// # Standard Android framework imports
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
@@ -9,867 +8,586 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.Log;
-import android.view.KeyEvent; 
-import android.view.MotionEvent; 
+import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.ImageButton;
-import android.widget.ProgressBar;
-import android.widget.TextView;
-import android.widget.Toast;
+import android.widget.*;
 
-// # AndroidX/AppCompat (UI and compatibility support)
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-
-// # Media3/ExoPlayer imports for video playback
-import androidx.media3.common.MediaItem;
-import androidx.media3.common.PlaybackException;
-import androidx.media3.common.Player;
-import androidx.media3.common.TrackSelectionParameters;
+import androidx.media3.common.*;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector;
+import androidx.media3.ui.PlayerControlView;
 import androidx.media3.ui.PlayerView;
 
-// # Java standard utility imports for time/date formatting
+import com.tvplayer.app.skipdetection.*;
+import com.tvplayer.app.skipdetection.strategies.*;
+
 import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
-import java.util.TimeZone;
+import java.util.*;
 
-// # Smart Skip Detection imports
-import com.tvplayer.app.skipdetection.SmartSkipManager;
-import com.tvplayer.app.skipdetection.MediaIdentifier;
-import com.tvplayer.app.skipdetection.SkipDetectionCallback;
-import com.tvplayer.app.skipdetection.SkipDetectionResult;
-import com.tvplayer.app.skipdetection.SkipDetectionResult.SkipSegment;
-import com.tvplayer.app.skipdetection.SkipDetectionResult.SkipSegmentType;
-import com.tvplayer.app.skipdetection.SkipDetectionResult.DetectionSource;
+public class MainActivity extends AppCompatActivity {
 
-/**
- * MainActivity
- * FUNCTION: The main video player activity. Manages player state, UI overlays,
- * controls, and coordinates the skip detection logic.
- * INTERACTS WITH:
- * - activity_main.xml (The layout)
- * - styles.xml / colors.xml (Styling)
- * - PreferencesHelper.java (Loading settings)
- * - SmartSkipManager.java (Running skip detection)
- * - SkipMarkers.java (Holding the active skip times)
- * - SettingsActivity.java (Launching the settings page)
- */
-public class MainActivity extends AppCompatActivity implements Player.Listener, SkipDetectionCallback {
-
-    private static final String TAG = "MainActivity";
-
-    // --- Core Media Player Components ---
-    private PlayerView playerView;
     private ExoPlayer player;
+    private PlayerView playerView;
+    private View customControls;
 
-    // --- UI/Control Components ---
-    private View customControls; // # ID: customControlsOverlay
-    private View skipButtonsOverlayContainer; // # Container for all skip buttons
-    private Handler controlsHandler = new Handler(Looper.getMainLooper());
-    private static final int CONTROLS_TIMEOUT_MS = 5000;
-    private ImageButton btnPlayPause, btnSettings, btnRewind, btnFastForward;
-    private TextView tvCurrentTime, tvTotalTime, tvRemainingTime, tvFinishTime;
+    // UI components for time display
+    private TextView currentTimeOfDay, elapsedTime, totalTime, remainingTime, finishTime;
     private ProgressBar progressBar;
 
-    // --- Skip Button Components ---
+    // UI components for skip buttons
     private Button btnSkipIntro, btnSkipRecap, btnSkipCredits, btnNextEpisode;
-    private Button btnSkipCancel; // # NEW: Cancel Button (Feature P2/Cancel)
 
-    // --- Time/Scrubbing State ---
-    private Handler timeUpdateHandler = new Handler(Looper.getMainLooper());
-    private static final int SCRUB_INTERVAL_MS = 250; 
-    private static final int SCRUB_STEP_MS = 5000;
-    private int scrubMultiplier = 0; // # 0 = not scrubbing
+    // UI components for control buttons including playback speed and audio delay
+    private ImageButton btnPlayPause, btnSettings, btnAudioDelay, btnSubtitleDelay;
 
-    // --- Custom Logic Helpers ---
-    private PreferencesHelper preferencesHelper;
+    private TextView titleTextView;  // Display title & episode info here
+
+    // Track selection for resolutions and audio languages
+    private DefaultTrackSelector trackSelector;
+
+    // Handlers and Runnables for UI updates
+    private Handler updateHandler;
+    private Runnable updateRunnable;
+    private Handler controlsHandler;
+    private Runnable hideControlsRunnable;
+
+    // Playback position and media tracking for resumption and Stremio
+    private long lastPositionMs = 0;
+    private String currentVideoUrl = null;
+
+    // Skip management
+    private PreferencesHelper prefsHelper;
     private SkipMarkers skipMarkers;
     private SmartSkipManager smartSkipManager;
+    private List<SkipDetectionStrategy> skipStrategies;
 
-    // --- Time Formatting ---
-    private final SimpleDateFormat durationFormat;
-    private final SimpleDateFormat finishTimeFormat = new SimpleDateFormat("h:mm a", Locale.getDefault());
+    // Flags for auto skip prevents multiple triggers
+    private boolean autoSkippedIntro = false, autoSkippedRecap = false, autoSkippedCredits = false;
 
-    // --- Runnables ---
+    // For trakt syncing
+    private TraktSyncManager traktSyncManager;
 
-    // # Runnable to hide controls after a timeout
-    private final Runnable controlsTimeoutRunnable = new Runnable() {
-        @Override
-        public void run() {
-            hideControls();
-        }
-    };
+    // Volume control independent of Android system volume
+    private VolumeController volumeController;
 
-    /**
-     * Runnable that updates all time displays and the progress bar every second.
-     */
-    private final Runnable timeUpdateRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (player != null && (player.getPlaybackState() == Player.STATE_READY || player.getPlaybackState() == Player.STATE_BUFFERING) && player.isPlaying()) {
-                updateProgress();
-            }
-            // # Reschedule the runnable to run again in 1 second
-            timeUpdateHandler.postDelayed(this, 1000); 
-        }
-    };
-
-    /**
-     * Runnable for handling fast-scrubbing (FF/RW).
-     */
-    private final Runnable scrubRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (player != null && scrubMultiplier != 0) {
-                long seekAmount = (long) scrubMultiplier * SCRUB_STEP_MS;
-                long newPosition = player.getCurrentPosition() + seekAmount;
-                // # Clamp position to valid range
-                newPosition = Math.max(0, Math.min(newPosition, player.getDuration()));
-                player.seekTo(newPosition);
-
-                updateProgress(); // # Update time display immediately
-                resetControlsTimeout(); // # Keep the controls visible
-
-                // # Reschedule for the next seek tick
-                timeUpdateHandler.postDelayed(this, SCRUB_INTERVAL_MS);
-            }
-        }
-    };
-
-
-    /**
-     * Constructor
-     * FUNCTION: Initializes the time formatter for durations.
-     */
-    public MainActivity() {
-        super();
-        // # This formatter will correctly show "00:30:00" instead of "30:00"
-        durationFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
-        durationFormat.setTimeZone(TimeZone.getTimeZone("UTC"));
-    }
-
-    // =========================================================================
-    // LIFECYCLE METHODS
-    // =========================================================================
+    private static final int CONTROLS_TIMEOUT = 5000; // 5 seconds
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // # Ensure the screen remains on while the activity is running
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // # 1. Initialize helper classes
-        preferencesHelper = new PreferencesHelper(this);
+        prefsHelper = new PreferencesHelper(this);
         skipMarkers = new SkipMarkers();
-        // # Initialize SmartSkipManager *without* the Player.
-        smartSkipManager = new SmartSkipManager(this, preferencesHelper);
 
-        // # 2. Map UI elements to their IDs
-        initializeViews();
+        // Initialize track selector with default parameters
+        trackSelector = new DefaultTrackSelector(this);
+        player = new ExoPlayer.Builder(this).setTrackSelector(trackSelector).build();
 
-        // # 3. Set up the ExoPlayer instance
-        initializePlayer();
-
-        // # 4. Handle incoming intent (e.g., being launched from Stremio)
-        handleIntent(getIntent());
-    }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent); // # Update the activity's intent
-
-        // # Release the old player and create a new one for the new media
-        releasePlayer();
-        initializePlayer();
-        handleIntent(intent);
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // # Start the time update loop
-        timeUpdateHandler.post(timeUpdateRunnable);
-        // # Load preferences in case they were changed in SettingsActivity
-        loadPreferencesAndApply();
-        // # Resume playback if the player exists
-        if (player != null) {
-            player.play();
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        // # Stop the time update loop when the activity is not visible
-        timeUpdateHandler.removeCallbacks(timeUpdateRunnable);
-        // # Pause playback
-        if (player != null) {
-            player.pause();
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        // # Release all resources
-        releasePlayer();
-        if (smartSkipManager != null) {
-            smartSkipManager.shutdown();
-        }
-        controlsHandler.removeCallbacks(controlsTimeoutRunnable);
-        timeUpdateHandler.removeCallbacks(timeUpdateRunnable);
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    }
-
-    // =========================================================================
-    // INITIALIZATION & MEDIA HANDLING
-    // =========================================================================
-
-    /**
-     * Finds and initializes all view components from activity_main.xml.
-     * Interacts with: activity_main.xml
-     */
-    private void initializeViews() {
         playerView = findViewById(R.id.playerView);
+        playerView.setPlayer(player);
+        customControls = findViewById(R.id.customControls);
 
-        // # ID: customControlsOverlay
-        customControls = findViewById(R.id.customControlsOverlay); 
-        skipButtonsOverlayContainer = findViewById(R.id.skipButtonsOverlayContainer);
-
-        // # Time Info
-        tvCurrentTime = findViewById(R.id.tvCurrentTime);
-        tvTotalTime = findViewById(R.id.tvTotalTime);
-        tvRemainingTime = findViewById(R.id.tvRemainingTime);
-        tvFinishTime = findViewById(R.id.tvFinishTime);
+        // Initialize UI components
+        currentTimeOfDay = findViewById(R.id.currentTimeOfDay);
+        elapsedTime = findViewById(R.id.elapsedTime);
+        totalTime = findViewById(R.id.totalTime);
+        remainingTime = findViewById(R.id.remainingTime);
+        finishTime = findViewById(R.id.finishTime);
         progressBar = findViewById(R.id.progressBar);
 
-        // # Control Buttons
-        btnPlayPause = findViewById(R.id.btnPlayPause);
-        btnSettings = findViewById(R.id.btnSettings);
-        btnRewind = findViewById(R.id.btnRewind);
-        btnFastForward = findViewById(R.id.btnFastForward);
-
-        // # Skip Buttons
         btnSkipIntro = findViewById(R.id.btnSkipIntro);
         btnSkipRecap = findViewById(R.id.btnSkipRecap);
         btnSkipCredits = findViewById(R.id.btnSkipCredits);
         btnNextEpisode = findViewById(R.id.btnNextEpisode);
-        btnSkipCancel = findViewById(R.id.btnSkipCancel); // # NEW: Find cancel button
 
-        // # Set click listeners for controls
-        setupControlListeners();
+        btnPlayPause = findViewById(R.id.btnPlayPause);
+        btnSettings = findViewById(R.id.btnSettings);
+        btnAudioDelay = findViewById(R.id.btnAudioDelay);
+        btnSubtitleDelay = findViewById(R.id.btnSubtitleDelay);
 
-        // # Set click listeners for skip buttons
-        setupSkipButtonListeners();
+        titleTextView = findViewById(R.id.titleTextView);
 
-        // # Hide controls initially
-        hideControls();
+        // Initialize custom controllers
+        volumeController = new VolumeController(this);
+        traktSyncManager = new TraktSyncManager(this, prefsHelper);
+
+        smartSkipManager = new SmartSkipManager(this, prefsHelper);
+        skipStrategies = new ArrayList<>();
+        // Adding strategies in prioritized order for fallback
+        skipStrategies.add(new ChapterStrategy(player));
+        skipStrategies.add(new AudioFingerprintStrategy());
+        skipStrategies.add(new ManualPreferenceStrategy(prefsHelper));
+        // Add other custom skip strategies as needed
+
+        smartSkipManager.setStrategies(skipStrategies);
+
+        setupPlayerListeners();
+        setupUIListeners();
+        setupUpdateHandlers();
+
+        // Load initial intent
+        handleIntent(getIntent());
+
+        // Other initializations
+        loadSkipMarkersFromPreferences();
+        applyAudioSubtitleDelays();
+        volumeController.register();
+
     }
 
-    /**
-     * Sets click listeners for all playback controls.
-     */
-    private void setupControlListeners() {
-        // # Player view itself toggles controls
-        playerView.setOnClickListener(v -> toggleControls());
-
-        // # Playback controls
-        btnPlayPause.setOnClickListener(v -> {
-            if (player != null) player.setPlayWhenReady(!player.getPlayWhenReady());
-            resetControlsTimeout();
-        });
-        btnRewind.setOnClickListener(v -> {
-            if (player != null) player.seekTo(player.getCurrentPosition() - 10000); // # 10 sec
-            resetControlsTimeout();
-        });
-        btnFastForward.setOnClickListener(v -> {
-            if (player != null) player.seekTo(player.getCurrentPosition() + 10000); // # 10 sec
-            resetControlsTimeout();
-        });
-
-        // # Settings button
-        btnSettings.setOnClickListener(v -> {
-            Intent intent = new Intent(MainActivity.this, SettingsActivity.class);
-            startActivity(intent);
-            resetControlsTimeout();
-        });
-
-        // # Placeholder button listeners for other controls
-        findViewById(R.id.btnAudioDelay).setOnClickListener(v -> Toast.makeText(this, "Audio Delay Not Implemented", Toast.LENGTH_SHORT).show());
-        findViewById(R.id.btnSubtitleDelay).setOnClickListener(v -> Toast.makeText(this, "Subtitle Delay Not Implemented", Toast.LENGTH_SHORT).show());
-        findViewById(R.id.btnSubtitles).setOnClickListener(v -> Toast.makeText(this, "Subtitles Not Implemented", Toast.LENGTH_SHORT).show());
-        findViewById(R.id.btnPlaybackSpeed).setOnClickListener(v -> Toast.makeText(this, "Speed Not Implemented", Toast.LENGTH_SHORT).show());
-    }
-
-    /**
-     * Sets click listeners for all skip-related buttons.
-     */
-    private void setupSkipButtonListeners() {
-        btnSkipIntro.setOnClickListener(v -> performSkip(SkipSegmentType.INTRO));
-        btnSkipRecap.setOnClickListener(v -> performSkip(SkipSegmentType.RECAP));
-        btnSkipCredits.setOnClickListener(v -> performSkip(SkipSegmentType.CREDITS));
-        btnNextEpisode.setOnClickListener(v -> performSkip(SkipSegmentType.NEXT_EPISODE)); 
-
-        // # NEW: Cancel button hides the skip overlay
-        btnSkipCancel.setOnClickListener(v -> {
-            hideSkipButtons();
-            // # Briefly show main controls so user knows action was registered
-            showControls(); 
-        });
-    }
-
-    /**
-     * Creates and configures the ExoPlayer instance.
-     * Interacts with: Media3/ExoPlayer library
-     */
-    private void initializePlayer() {
-        if (player == null) {
-            player = new ExoPlayer.Builder(this).build();
-            player.addListener(this);
-            playerView.setPlayer(player);
-        }
-    }
-
-    /**
-     * Releases the ExoPlayer resources.
-     */
-    private void releasePlayer() {
-        if (player != null) {
-            player.removeListener(this); // # Important: remove listener
-            player.release();
-            player = null;
-        }
-    }
-
-    /**
-     * Handles incoming Intents, typically a VIEW intent for a media URI.
-     * @param intent The intent that started the activity.
-     */
+    // Handle intents from Stremio or other apps
     private void handleIntent(Intent intent) {
-        Uri uri = intent.getData();
-        if (uri != null && player != null) {
-            Log.i(TAG, "Handling new media intent: " + uri.toString());
-            MediaItem mediaItem = MediaItem.fromUri(uri);
-            player.setMediaItem(mediaItem);
+        Uri dataUri = intent.getData();
+        String videoUrl = null;
+        long requestedPosition = 0;
+        String incomingTitle = intent.getStringExtra("title");
+        String incomingShowName = intent.getStringExtra("showName");
+        Integer season = intent.hasExtra("season") ? intent.getIntExtra("season", -1) : null;
+        Integer episode = intent.hasExtra("episode") ? intent.getIntExtra("episode", -1) : null;
+        String imdbId = intent.getStringExtra("imdbId");
+        String posterUrl = intent.getStringExtra("poster"); // For poster passing from Stremio
+
+        if (dataUri != null) {
+            videoUrl = dataUri.toString();
+        } else if (intent.hasExtra("videoUrl")) {
+            videoUrl = intent.getStringExtra("videoUrl");
+        }
+
+        if (intent.hasExtra("position")) {
+            requestedPosition = intent.getLongExtra("position", 0);
+        }
+
+        if (videoUrl != null) {
+            MediaItem mediaItem = MediaItem.Builder.fromUri(videoUrl).setTag(new MediaMetadata.Builder()
+                    .setTitle(incomingTitle)
+                    .setDisplayTitle(incomingTitle)
+                    .setArtist(incomingShowName)
+                    .setSeasonNumber(season == null ? -1 : season)
+                    .setEpisodeNumber(episode == null ? -1 : episode)
+                    .setExtras( Bundle.EMPTY)
+                    .build())
+                    .build();
+
+            player.setMediaItem(mediaItem, requestedPosition);
             player.prepare();
             player.play();
-        } else {
-            Log.w(TAG, "Intent was null or had no data. Player not started.");
+
+            currentVideoUrl = videoUrl;
+
+            // Update UI for title display
+            updateTitleDisplay(incomingTitle, incomingShowName, season, episode);
+
+            // Pass poster info to UI if implemented
+
+            resetAutoSkipFlags();
         }
     }
 
-    /**
-     * Loads settings from PreferencesHelper and applies them to the player.
-     * Interacts with: PreferencesHelper.java
-     */
-    private void loadPreferencesAndApply() {
-        if (player == null) return;
-
-        // # Load manual markers into our SkipMarkers object
-        skipMarkers.setIntro(preferencesHelper.getIntroStart(), preferencesHelper.getIntroEnd());
-        skipMarkers.setRecap(preferencesHelper.getRecapStart(), preferencesHelper.getRecapEnd());
-
-        // # Note: Credits "start" is an offset from the end
-        long durationSec = player.getDuration() / 1000;
-        int creditsOffset = preferencesHelper.getCreditsStart();
-        if (creditsOffset > 0 && durationSec > 0) {
-            skipMarkers.setCredits((int)(durationSec - creditsOffset), (int)durationSec);
-        } else {
-             // # This is a fallback if offset isn't set but manual end time is
-            skipMarkers.setCredits(0, preferencesHelper.getCreditsEnd()); 
+    private void updateTitleDisplay(String title, String showName, Integer season, Integer episode) {
+        StringBuilder sb = new StringBuilder();
+        if (title != null && !title.isEmpty()) {
+            sb.append(title);
         }
-
-        skipMarkers.setNextEpisodeStart(preferencesHelper.getNextEpisodeStart());
-
-        // # Apply Subtitle Delay
-        // # FIX: This method (`setSubtitleDelay`) is now available because
-        // # we updated the media3 library version in build.gradle
-        try {
-            int subtitleDelayMs = preferencesHelper.getSubtitleDelayMs();
-            player.setSubtitleDelay((long) subtitleDelayMs); // # This is the correct method
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to apply subtitle delay", e);
+        if (showName != null && !showName.isEmpty()) {
+            sb.append(" - ").append(showName);
         }
-    }
-
-    /**
-     * Initiates the Smart Skip detection process for the current media.
-     * This is called once the player is ready.
-     */
-    private void startSkipDetection() {
-        if (player == null || player.getDuration() <= 0) return;
-
-        // # Pass the (now ready) player to the manager
-        smartSkipManager.rebindPlayer(player);
-
-        // # Create the MediaIdentifier with all known info
-        MediaIdentifier mediaIdentifier = new MediaIdentifier.Builder()
-            .setTitle(player.getMediaMetadata().title != null ? player.getMediaMetadata().title.toString() : "Unknown")
-            .setRuntimeSeconds(player.getDuration() / 1000)
-            // # TODO: Add Trakt/TMDB/TVDB IDs here when available
-            // .setTraktId("...")
-            // .setTmdbId("...")
-            // .setSeasonNumber(1)
-            // .setEpisodeNumber(1)
-            .build();
-
-        // # Start the async detection. 'this' (MainActivity) is the callback.
-        smartSkipManager.detectSkipSegmentsAsync(mediaIdentifier, this);
-    }
-
-    // =========================================================================
-    // PLAYER EVENT HANDLING (Player.Listener)
-    // =========================================================================
-
-    @Override
-    public void onIsPlayingChanged(boolean isPlaying) {
-        // # Update the play/pause button icon
-        updatePlayPauseButton();
-    }
-
-    @Override
-    public void onPlaybackStateChanged(int playbackState) {
-        if (playbackState == Player.STATE_READY) {
-            Log.i(TAG, "Player is READY.");
-            // # Player is ready, load settings
-            loadPreferencesAndApply();
-            // # Start the progress bar update loop
-            timeUpdateHandler.post(timeUpdateRunnable);
-            // # Start the skip detection process
-            startSkipDetection();
-
-        } else if (playbackState == Player.STATE_ENDED) {
-            Log.i(TAG, "Player has ENDED.");
-            finish(); // # Close the activity when the video finishes
-
-        } else if (playbackState == Player.STATE_BUFFERING) {
-            Log.d(TAG, "Player is BUFFERING.");
-
-        } else if (playbackState == Player.STATE_IDLE) {
-            Log.d(TAG, "Player is IDLE.");
+        if (season != null && season > 0) {
+            sb.append(" S").append(season);
         }
+        if (episode != null && episode > 0) {
+            sb.append("E").append(episode);
+        }
+        titleTextView.setText(sb.toString());
+        titleTextView.setVisibility(View.VISIBLE);
     }
 
-    @Override
-    public void onPlayerError(PlaybackException error) {
-        // # Shows an alert dialog on playback error
-        Log.e(TAG, "Player Error", error);
-        new AlertDialog.Builder(this)
-                .setTitle("Playback Error")
-                .setMessage(error.getMessage())
-                .setPositiveButton(android.R.string.ok, (dialog, which) -> finish())
-                .show();
-    }
+    private void setupPlayerListeners() {
+        player.addListener(new Player.Listener() {
 
-    // =========================================================================
-    // SMART SKIP CALLBACKS (SkipDetectionCallback)
-    // =========================================================================
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY) {
+                    applyAudioSubtitleDelays();
+                    updatePlayPauseButton();
+                    loadSkipMarkersFromPreferences();
+                    smartSkipManager.attachPlayer(player);
+                    attemptSmartSkipDetection();
 
-    /**
-     * Called by SmartSkipManager when a skip segment result is successfully found.
-     * This runs on the MAIN THREAD.
-     * Interacts with: SmartSkipManager.java, SkipMarkers.java
-     */
-    @Override
-    public void onDetectionComplete(SkipDetectionResult result) {
-        if (result.isSuccess()) {
-            // # Use getDisplayName() which now exists
-            Log.i(TAG, "Skip detection success from: " + result.getSource().getDisplayName());
-            Toast.makeText(this, "Skip markers found via " + result.getSource().getDisplayName(), Toast.LENGTH_SHORT).show();
-
-            // # Clear manual markers and apply the new, better ones
-            skipMarkers.clearAll();
-            for (SkipSegment segment : result.getSegments()) {
-                if (segment.type == SkipSegmentType.INTRO) {
-                    skipMarkers.setIntro(segment.startSeconds, segment.endSeconds);
-                } else if (segment.type == SkipSegmentType.RECAP) {
-                    skipMarkers.setRecap(segment.startSeconds, segment.endSeconds);
-                } else if (segment.type == SkipSegmentType.CREDITS) {
-                    skipMarkers.setCredits(segment.startSeconds, segment.endSeconds);
-                } else if (segment.type == SkipSegmentType.NEXT_EPISODE) {
-                    skipMarkers.setNextEpisodeStart(segment.startSeconds);
+                    if (lastPositionMs > 0) {
+                        player.seekTo(lastPositionMs);
+                        lastPositionMs = 0;
+                    }
+                } else if (state == Player.STATE_ENDED) {
+                    if (prefsHelper.isAutoPlayNextEpisode()) {
+                        // Implement auto-play next episode logic utilizing Stremio API or intent
+                        finish(); // Placeholder: close for now
+                    }
                 }
             }
-        } else {
-            // # On failure, we just keep the manual preferences that were already loaded
-            Log.w(TAG, "Skip detection failed: " + result.getErrorMessage() + ". Using manual preferences.");
-            Toast.makeText(this, "Skip detection failed. Using manual settings.", Toast.LENGTH_LONG).show();
+
+            @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                updatePlayPauseButton();
+                if (isPlaying) {
+                    traktSyncManager.startSyncing(player, getCurrentMediaMetadata());
+                } else {
+                    traktSyncManager.stopSyncing();
+                }
+            }
+
+            @Override
+            public void onPlayerError(@NonNull PlaybackException error) {
+                Toast.makeText(MainActivity.this, "Playback error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        // Track selection change listener example
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onTracksChanged(Tracks tracks) {
+                // React to available audio languages and video resolutions
+                // Populate your UI elements accordingly
+            }
+        });
+    }
+
+    private MediaMetadata getCurrentMediaMetadata() {
+        MediaItem item = player.getCurrentMediaItem();
+        if (item != null) {
+            return item.mediaMetadata;
         }
-
-        // # Do an initial check to show buttons if we're already in a segment
-        updateSkipButtonVisibility();
-        // # Check for auto-skip
-        performAutoSkip();
+        return null;
     }
 
-    /**
-     * Called by SmartSkipManager on a critical failure.
-     * This runs on the MAIN THREAD.
-     */
-    @Override
-    public void onDetectionFailed(String errorMessage) {
-        // # On critical failure, just use manual preferences
-        Log.e(TAG, "Critical skip detection failure: " + errorMessage);
-        Toast.makeText(this, "Skip detection error. Using manual settings.", Toast.LENGTH_LONG).show();
-        loadPreferencesAndApply();
-        updateSkipButtonVisibility();
+    private void setupUIListeners() {
+        btnPlayPause.setOnClickListener(v -> {
+            if (player.isPlaying()) player.pause();
+            else player.play();
+            updatePlayPauseButton();
+            resetControlsTimeout();
+        });
+
+        btnSkipIntro.setOnClickListener(v -> skipIfValid(skipMarkers.getIntro()));
+        btnSkipRecap.setOnClickListener(v -> skipIfValid(skipMarkers.getRecap()));
+        btnSkipCredits.setOnClickListener(v -> skipIfValid(skipMarkers.getCredits()));
+        btnNextEpisode.setOnClickListener(v -> finish()); // Should trigger next episode play in final
+
+        btnAudioDelay.setOnClickListener(v -> showAudioDelayDialog());
+        btnSubtitleDelay.setOnClickListener(v -> showSubtitleDelayDialog());
+
+        // Volume controls for dpad up/down custom mapping
+        playerView.setOnKeyListener((v, keyCode, event) -> {
+            if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_DPAD_UP:
+                    volumeController.increaseVolume();
+                    return true;
+                case KeyEvent.KEYCODE_DPAD_DOWN:
+                    volumeController.decreaseVolume();
+                    return true;
+            }
+            return false;
+        });
+
+        // Progress bar gesture
+        progressBar.setOnTouchListener((v, event) -> {
+            if (player.getDuration() <= 0) return false;
+            int action = event.getAction();
+            float x = event.getX();
+            float pct = Math.max(0, Math.min(1, x / progressBar.getWidth()));
+            long pos = (long) (player.getDuration() * pct);
+            if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+                player.seekTo(pos);
+                updateTimeDisplays();
+                return true;
+            } else if (action == MotionEvent.ACTION_UP) {
+                player.seekTo(pos);
+                updateTimeDisplays();
+                resetControlsTimeout();
+                return true;
+            }
+            return false;
+        });
+
+        // Playback speed can be controlled with a custom dialog
+        findViewById(R.id.btnPlaybackSpeed).setOnClickListener(v -> showPlaybackSpeedDialog());
     }
 
-    // =========================================================================
-    // SKIP LOGIC & ACTIONS
-    // =========================================================================
+    private void skipIfValid(SkipSegment segment) {
+        if (segment != null && segment.isValid()) {
+            player.seekTo(segment.end * 1000L);
+            resetAutoSkipFlags();
+            hideSkipButtons();
+        }
+    }
 
-    /**
-     * Hides all skip-related buttons and the overlay container.
-     * Called when a skip is performed or 'Cancel' is pressed.
-     * (Feature P2/Cancel)
-     */
+    private void resetAutoSkipFlags() {
+        autoSkippedIntro = autoSkippedRecap = autoSkippedCredits = false;
+    }
+
     private void hideSkipButtons() {
-        skipButtonsOverlayContainer.setVisibility(View.GONE);
         btnSkipIntro.setVisibility(View.GONE);
         btnSkipRecap.setVisibility(View.GONE);
         btnSkipCredits.setVisibility(View.GONE);
         btnNextEpisode.setVisibility(View.GONE);
-        btnSkipCancel.setVisibility(View.GONE);
-
-        // # Return focus to the player view to prevent a "lost focus" state
-        if(playerView != null) {
-            playerView.requestFocus();
-        }
     }
 
-    /**
-     * Manages visibility and focus of all skip buttons.
-     * Implements priority (Intro > Recap > Credits) (Feature P1).
-     * Implements focus-fix (Feature P2/Focus).
-     * This is called every second by the timeUpdateRunnable.
-     */
-    private void updateSkipButtonVisibility() {
-        if (player == null || skipMarkers == null) return;
+    private void attemptSmartSkipDetection() {
+        if (player == null || smartSkipManager == null) return;
 
-        long currentPositionSec = player.getCurrentPosition() / 1000;
+        MediaMetadata metadata = player.getCurrentMediaItem() != null ? player.getCurrentMediaItem().mediaMetadata : null;
+        String title = metadata != null ? metadata.title : null;
+        String showName = metadata != null ? metadata.artist : null;
+        Integer season = metadata != null && metadata.seasonNumber > 0 ? metadata.seasonNumber : null;
+        Integer episode = metadata != null && metadata.episodeNumber > 0 ? metadata.episodeNumber : null;
 
-        // # Check which segments are active
-        boolean inIntro = skipMarkers.isInIntro(currentPositionSec);
-        boolean inRecap = skipMarkers.isInRecap(currentPositionSec);
-        boolean inCredits = skipMarkers.isInCredits(currentPositionSec);
-        boolean atNextEp = skipMarkers.isAtNextEpisode(currentPositionSec);
+        smartSkipManager.detectSkipMarkers(new MediaIdentifier.Builder()
+            .setTitle(title)
+            .setShowName(showName)
+            .setSeasonNumber(season)
+            .setEpisodeNumber(episode)
+            .build(), new SkipDetectionCallback() {
 
-        // # Reset visibility
-        btnSkipIntro.setVisibility(View.GONE);
-        btnSkipRecap.setVisibility(View.GONE);
-        btnSkipCredits.setVisibility(View.GONE);
-        btnNextEpisode.setVisibility(View.GONE);
-        btnSkipCancel.setVisibility(View.GONE); // # Also hide cancel
-
-        Button buttonToFocus = null;
-
-        // --- PRIORITY LOGIC (Feature P1) ---
-        // # Only show ONE skip button at a time, in this order:
-        if (inIntro) {
-            btnSkipIntro.setVisibility(View.VISIBLE);
-            buttonToFocus = btnSkipIntro;
-        } else if (inRecap) {
-            btnSkipRecap.setVisibility(View.VISIBLE);
-            buttonToFocus = btnSkipRecap;
-        } else if (inCredits) {
-            btnSkipCredits.setVisibility(View.VISIBLE);
-            buttonToFocus = btnSkipCredits;
-        }
-
-        // # Next Episode button can show alongside Credits
-        if (atNextEp) {
-            btnNextEpisode.setVisibility(View.VISIBLE);
-            if (buttonToFocus == null) { // # Focus NextEp if no other button is active
-                buttonToFocus = btnNextEpisode;
+            @Override
+            public void onDetectionComplete(SkipDetectionResult result) {
+                if (result.isSuccess()) {
+                    applyDetectedSkipMarkers(result);
+                }
             }
-        }
 
-        // --- FOCUS & CANCEL BUTTON LOGIC (Feature P2) ---
-        if (buttonToFocus != null) {
-            // # If any button is visible, show the container and the Cancel button
-            skipButtonsOverlayContainer.setVisibility(View.VISIBLE);
-            btnSkipCancel.setVisibility(View.VISIBLE);
-
-            // # FOCUS FIX: Request focus on the highest-priority button
-            // # This check prevents stealing focus if the user is using the main controls
-            if (!customControls.isShown() && !skipButtonsOverlayContainer.hasFocus()) {
-                 buttonToFocus.requestFocus();
+            @Override
+            public void onDetectionFailed(String errorMessage) {
+                // Log or show error
             }
-        } else if (skipButtonsOverlayContainer.isShown()) {
-            // # No buttons are active, hide the container
-            hideSkipButtons();
-        }
+        });
     }
 
-    /**
-     * Performs a seek operation based on the requested skip type.
-     * @param type The type of segment to skip (INTRO, RECAP, etc.).
-     */
-    private void performSkip(SkipSegmentType type) {
-        if (player == null || skipMarkers == null) return;
-
-        long seekToMs = -1;
-        String toastMessage = "";
-
-        switch (type) {
-            case INTRO:
-                // # Use getIntro().end to get the TimeRange object
-                seekToMs = skipMarkers.getIntro().end * 1000L;
-                toastMessage = "Skipping Intro";
-                break;
-            case RECAP:
-                // # Use getRecap().end to get the TimeRange object
-                seekToMs = skipMarkers.getRecap().end * 1000L;
-                toastMessage = "Skipping Recap";
-                break;
-            case CREDITS:
-                // # For Credits, skip to the end of the video
-                seekToMs = player.getDuration(); 
-                toastMessage = "Skipping Credits";
-                break;
-            case NEXT_EPISODE:
-                // # For Next Episode, seek to the end to trigger STATE_ENDED
-                seekToMs = player.getDuration();
-                toastMessage = "Loading Next Episode..."; // # Placeholder
-                break;
-            default:
-                return;
-        }
-
-        if (seekToMs >= 0) {
-            player.seekTo(seekToMs);
-            if (!toastMessage.isEmpty()) {
-                Toast.makeText(this, toastMessage, Toast.LENGTH_SHORT).show();
-            }
-            // # Hide buttons immediately after skip
-            hideSkipButtons();
-        }
+    private void applyDetectedSkipMarkers(SkipDetectionResult result) {
+        skipMarkers.setIntro(result.getIntroStart(), result.getIntroEnd());
+        skipMarkers.setRecap(result.getRecapStart(), result.getRecapEnd());
+        skipMarkers.setCredits(result.getCreditsStart(), result.getCreditsEnd());
+        // Update skip buttons visibility appropriately based on position
     }
 
-    /**
-     * Checks preferences and automatically seeks if an auto-skip is due.
-     */
-    private void performAutoSkip() {
-        if (player == null || skipMarkers == null) return;
-
-        long currentPositionSec = player.getCurrentPosition() / 1000;
-
-        // # Check Auto-Skip Intro
-        if (preferencesHelper.isAutoSkipIntro() && skipMarkers.isInIntro(currentPositionSec)) {
-            Log.i(TAG, "Auto-skipping Intro");
-            Toast.makeText(this, "Auto-skipping Intro", Toast.LENGTH_SHORT).show();
-            performSkip(SkipSegmentType.INTRO);
-            return; // # Only perform one auto-skip per check
-        }
-
-        // # Check Auto-Skip Recap
-        if (preferencesHelper.isAutoSkipRecap() && skipMarkers.isInRecap(currentPositionSec)) {
-            Log.i(TAG, "Auto-skipping Recap");
-            Toast.makeText(this, "Auto-skipping Recap", Toast.LENGTH_SHORT).show();
-            performSkip(SkipSegmentType.RECAP);
-            return;
-        }
-
-        // # Check Auto-Skip Credits
-        if (preferencesHelper.isAutoSkipCredits() && skipMarkers.isInCredits(currentPositionSec)) {
-            Log.i(TAG, "Auto-skipping Credits");
-            Toast.makeText(this, "Auto-skipping Credits", Toast.LENGTH_SHORT).show();
-            performSkip(SkipSegmentType.CREDITS);
-        }
-    }
-
-    // =========================================================================
-    // UI/CONTROL METHODS
-    // =========================================================================
-
-    /**
-     * Shows the custom control overlay and starts the auto-hide timer.
-     */
-    private void showControls() {
-        if (customControls.getVisibility() != View.VISIBLE) {
-            customControls.setVisibility(View.VISIBLE);
-            // # Request focus on the play button for D-pad control
-            btnPlayPause.requestFocus();
-        }
-        resetControlsTimeout();
-    }
-
-    /**
-     * Hides the custom control overlay.
-     */
-    private void hideControls() {
-        customControls.setVisibility(View.GONE);
-    }
-
-    /**
-     * Shows controls if hidden, or hides them if visible.
-     */
-    private void toggleControls() {
-        if (customControls.getVisibility() == View.VISIBLE) {
-            hideControls();
-        } else {
-            showControls();
-        }
-    }
-
-    /**
-     * Resets the 5-second timer before the controls auto-hide.
-     */
-    private void resetControlsTimeout() {
-        // # Use controlsTimeoutRunnable
-        controlsHandler.removeCallbacks(controlsTimeoutRunnable);
-        controlsHandler.postDelayed(controlsTimeoutRunnable, CONTROLS_TIMEOUT_MS);
-    }
-
-    /**
-     * Updates the play/pause button icon based on the player state.
-     */
-    private void updatePlayPauseButton() {
+    private void updateTimeDisplays() {
         if (player == null) return;
-        if (player.isPlaying()) {
+        long posMs = player.getCurrentPosition();
+        long durMs = player.getDuration();
+
+        if (durMs <= 0) return;
+
+        float speed = player.getPlaybackParameters().speed;
+        long remainingMs = durMs - posMs;
+        long realRemaining = (long) (remainingMs / speed);
+
+        SimpleDateFormat timeFormat = new SimpleDateFormat("h:mm a", Locale.getDefault());
+        currentTimeOfDay.setText(timeFormat.format(new Date()));
+
+        elapsedTime.setText(formatTime(posMs / 1000));
+        totalTime.setText(formatTime(durMs / 1000));
+        remainingTime.setText(formatTime(remainingMs / 1000));
+
+        long finishTimeMs = System.currentTimeMillis() + realRemaining;
+        finishTime.setText(timeFormat.format(new Date(finishTimeMs)));
+
+        int progress = (int) ((posMs * 100) / durMs);
+        progressBar.setProgress(progress);
+    }
+
+    private String formatTime(long seconds) {
+        long h = seconds / 3600;
+        long m = (seconds % 3600) / 60;
+        long s = seconds % 60;
+        if (h > 0) return String.format(Locale.getDefault(), "%d:%02d:%02d", h, m, s);
+        return String.format(Locale.getDefault(), "%02d:%02d", m, s);
+    }
+
+    private void updatePlayPauseButton() {
+        if (player != null && player.isPlaying()) {
             btnPlayPause.setImageResource(android.R.drawable.ic_media_pause);
         } else {
             btnPlayPause.setImageResource(android.R.drawable.ic_media_play);
         }
     }
 
-    // =========================================================================
-    // TIME & PROGRESS BAR UPDATES
-    // =========================================================================
+    private void resetControlsTimeout() {
+        if (controlsHandler != null && hideControlsRunnable != null) {
+            controlsHandler.removeCallbacks(hideControlsRunnable);
+            controlsHandler.postDelayed(hideControlsRunnable, CONTROLS_TIMEOUT);
+        }
+    }
 
-    /**
-     * Updates all time-related UI elements.
-     */
-    private void updateProgress() {
-        if (player == null || player.getDuration() <= 0) {
-            return; // # Don't update if player isn't ready
+    private void applyAudioSubtitleDelays() {
+        if (player == null) return;
+
+        int audioDelay = prefsHelper.getAudioDelayMs();
+        int subtitleDelay = prefsHelper.getSubtitleDelayMs();
+        // Implement your custom logic here to apply audio/subtitle delays
+        // Note: Media3 ExoPlayer doesn't provide direct API for adjusting subtitle delay,
+        // so likely requires custom subtitle rendering or preprocessing.
+    }
+
+    private void showAudioDelayDialog() {
+        final String[] options = {"-500ms", "-250ms", "-100ms", "0ms (Reset)", "+100ms", "+250ms", "+500ms"};
+        final int[] values = {-500, -250, -100, 0, 100, 250, 500};
+        new AlertDialog.Builder(this)
+            .setTitle("Audio Delay")
+            .setItems(options, (dialog, which) -> {
+                prefsHelper.setAudioDelayMs(values[which]);
+                applyAudioSubtitleDelays();
+                Toast.makeText(this, "Audio delay: " + options[which], Toast.LENGTH_SHORT).show();
+            }).show();
+        resetControlsTimeout();
+    }
+
+    private void showSubtitleDelayDialog() {
+        final String[] options = {"-500ms", "-250ms", "-100ms", "0ms (Reset)", "+100ms", "+250ms", "+500ms"};
+        final int[] values = {-500, -250, -100, 0, 100, 250, 500};
+        new AlertDialog.Builder(this)
+            .setTitle("Subtitle Delay")
+            .setItems(options, (dialog, which) -> {
+                prefsHelper.setSubtitleDelayMs(values[which]);
+                applyAudioSubtitleDelays();
+                Toast.makeText(this, "Subtitle delay: " + options[which], Toast.LENGTH_SHORT).show();
+            }).show();
+        resetControlsTimeout();
+    }
+
+    private void showPlaybackSpeedDialog() {
+        final String[] options = {"0.25x", "0.50x", "0.75x", "1.00x (Normal)", "1.25x", "1.50x", "2.0x"};
+        final float[] speeds = {0.25f, 0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f};
+        new AlertDialog.Builder(this)
+            .setTitle("Playback Speed")
+            .setItems(options, (dialog, which) -> {
+                player.setPlaybackSpeed(speeds[which]);
+                updateTimeDisplays();
+                Toast.makeText(this, "Speed: " + options[which], Toast.LENGTH_SHORT).show();
+            }).show();
+        resetControlsTimeout();
+    }
+
+    // VolumeController handles volume independent from system
+    private class VolumeController {
+        private int currentVolume = 5; // Example initial volume level (range 0-10)
+        private final Context context;
+        private Toast volumeToast;
+
+        VolumeController(Context ctx) {
+            context = ctx;
         }
 
-        long durationMs = player.getDuration();
-        long currentPositionMs = player.getCurrentPosition();
-        long remainingMs = durationMs - currentPositionMs;
+        void increaseVolume() {
+            if (currentVolume < 10) currentVolume++;
+            showVolumeToast();
+            // Custom code to set volume in player if applicable
+        }
 
-        // # Update Progress Bar (max is 1000)
-        int progress = (int) ((currentPositionMs * 1000) / durationMs);
-        progressBar.setProgress(progress);
+        void decreaseVolume() {
+            if (currentVolume > 0) currentVolume--;
+            showVolumeToast();
+            // Custom code to set volume in player if applicable
+        }
 
-        // # Update time text views using the UTC-based duration formatter
-        tvCurrentTime.setText(durationFormat.format(new Date(currentPositionMs)));
-        tvTotalTime.setText(" / " + durationFormat.format(new Date(durationMs)));
-        tvRemainingTime.setText(durationFormat.format(new Date(remainingMs)));
+        void showVolumeToast() {
+            if (volumeToast != null) volumeToast.cancel();
+            volumeToast = Toast.makeText(context, "Volume: " + currentVolume, Toast.LENGTH_SHORT);
+            volumeToast.show();
+        }
 
-        // # Update Finish At time using the system's local time zone
-        tvFinishTime.setText(finishTimeFormat.format(new Date(System.currentTimeMillis() + remainingMs)));
+        void register() {
+            // Add any receiver or observer if needed
+        }
 
-        // # Update the skip buttons visibility
-        updateSkipButtonVisibility();
+        void unregister() {
+            // Cleanup if needed
+        }
     }
 
-    // =========================================================================
-    // KEY EVENT HANDLING (Custom Remote/D-Pad Logic)
-    // =========================================================================
-
-    /**
-     * Stops the fast-forward/rewind scrubbing action.
-     */
-    private void stopScrubbing() {
-        scrubMultiplier = 0;
-        timeUpdateHandler.removeCallbacks(scrubRunnable);
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (player != null) {
+            lastPositionMs = player.getCurrentPosition();
+            player.setPlayWhenReady(false);
+            traktSyncManager.stopSyncing();
+        }
+        if (updateHandler != null) updateHandler.removeCallbacks(updateRunnable);
+        if (controlsHandler != null) controlsHandler.removeCallbacks(hideControlsRunnable);
+        volumeController.unregister();
     }
 
-    /**
-     * Main handler for all physical key presses (Remote/D-Pad).
-     */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (player != null) {
+            player.setPlayWhenReady(true);
+            traktSyncManager.startSyncing(player, getCurrentMediaMetadata());
+        }
+        setupUpdateHandlers();
+        volumeController.register();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (player != null) {
+            player.release();
+            player = null;
+        }
+        traktSyncManager.stopSyncing();
+        if (updateHandler != null) updateHandler.removeCallbacks(updateRunnable);
+        if (controlsHandler != null) controlsHandler.removeCallbacks(hideControlsRunnable);
+        volumeController.unregister();
+    }
+
+    private void setupUpdateHandlers() {
+        updateHandler = new Handler(Looper.getMainLooper());
+        controlsHandler = new Handler(Looper.getMainLooper());
+
+        updateRunnable = new Runnable() {
+            @Override
+            public void run() {
+                updateTimeDisplays();
+                updateSkipButtons();
+                traktSyncManager.syncPlaybackPosition(player);
+                updateHandler.postDelayed(this, 10000); // Sync every 10 seconds
+            }
+        };
+        updateHandler.post(updateRunnable);
+
+        hideControlsRunnable = () -> customControls.setVisibility(View.GONE);
+        resetControlsTimeout();
+    }
+
+    private void updateSkipButtons() {
+        if (player == null) return;
+        long posSec = player.getCurrentPosition() / 1000;
+
+        // Manage visibility of skip buttons based on position
+        btnSkipIntro.setVisibility(skipMarkers.isInIntro(posSec) ? View.VISIBLE : View.GONE);
+        btnSkipRecap.setVisibility(skipMarkers.isInRecap(posSec) ? View.VISIBLE : View.GONE);
+        btnSkipCredits.setVisibility(skipMarkers.isInCredits(posSec) ? View.VISIBLE : View.GONE);
+        btnNextEpisode.setVisibility(skipMarkers.isAtNextEpisode(posSec) ? View.VISIBLE : View.GONE);
+    }
+
+    // Override to support D-pad and controller volume controls separately from system
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (player == null) return super.dispatchKeyEvent(event);
-
-        // # Show controls on ANY key press if they are hidden
-        if (event.getAction() == KeyEvent.ACTION_DOWN && !customControls.isShown()) {
-            // # Don't show controls if it's a media key that works while hidden
-            // # FIX: Changed MEDIA_PLAY to KEYCODE_MEDIA_PLAY
-            if (event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE &&
-                event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PLAY &&
-                event.getKeyCode() != KeyEvent.KEYCODE_MEDIA_PAUSE) {
-
-                // # Also don't show controls if a skip button is visible
-                if (!skipButtonsOverlayContainer.isShown()) {
-                    showControls();
-                }
-            }
-        }
-
-        // # Reset auto-hide timer (unless a skip button has focus)
-        if (!skipButtonsOverlayContainer.hasFocus()) {
-             resetControlsTimeout();
-        }
-
-        // --- KEY DOWN ACTION HANDLING ---
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
-            switch (event.getKeyCode()) {
-                // # Handle Play/Pause
-                case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                // # FIX: Changed MEDIA_PLAY to KEYCODE_MEDIA_PLAY
-                case KeyEvent.KEYCODE_MEDIA_PLAY:
-                    player.play();
-                    return true;
-                case KeyEvent.KEYCODE_MEDIA_PAUSE:
-                    player.pause();
-                    return true;
-
-                // # Handle D-Pad Center / Enter
-                case KeyEvent.KEYCODE_DPAD_CENTER:
-                case KeyEvent.KEYCODE_ENTER:
-                    // # If controls are hidden AND skip buttons are hidden, toggle controls
-                    if (!customControls.isShown() && !skipButtonsOverlayContainer.isShown()) {
-                        toggleControls();
-                        return true;
-                    }
-                    // # If controls are shown, or skip buttons are shown, let system handle click
-                    return super.dispatchKeyEvent(event);
-
-                // # Handle FF/RW
-                case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                    if (event.getRepeatCount() == 0) { // # On first press
-                        stopScrubbing();
-                        scrubMultiplier = 1;
-                        timeUpdateHandler.post(scrubRunnable);
-                    }
-                    return true;
-
-                case KeyEvent.KEYCODE_MEDIA_REWIND:
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                    if (event.getRepeatCount() == 0) { // # On first press
-                        stopScrubbing();
-                        scrubMultiplier = -1;
-                        timeUpdateHandler.post(scrubRunnable);
-                    }
-                    return true;
+            if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP) {
+                volumeController.increaseVolume();
+                return true;
+            } else if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_DOWN) {
+                volumeController.decreaseVolume();
+                return true;
             }
         }
-
-        // --- KEY UP ACTION HANDLING ---
-        if (event.getAction() == KeyEvent.ACTION_UP) {
-            switch (event.getKeyCode()) {
-                // # Stop scrubbing when FF/RW/D-Pad L/R is released
-                case KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                case KeyEvent.KEYCODE_DPAD_RIGHT:
-                case KeyEvent.KEYCODE_MEDIA_REWIND:
-                case KeyEvent.KEYCODE_DPAD_LEFT:
-                    stopScrubbing();
-                    return true;
-            }
-        }
-
-        // # Fallback: let the system handle it
         return super.dispatchKeyEvent(event);
     }
 }
