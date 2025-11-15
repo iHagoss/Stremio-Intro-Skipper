@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-
+      
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -32,7 +32,7 @@ jobs:
           build-tools: 33.0.0
           cache: gradle
 
-      - name: Accept Android SDK Licenses
+      - name: Accept SDK licenses
         run: yes | sdkmanager --licenses
 
       - name: Fix Gradle wrapper permissions
@@ -40,10 +40,7 @@ jobs:
           sudo apt-get update && sudo apt-get install -y dos2unix
           dos2unix ./gradlew
           chmod +x ./gradlew
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "gradle-wrapper.jar missing"
-            exit 1
-          fi
+          test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle-wrapper.jar missing"; exit 1; }
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
