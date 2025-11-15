@@ -33,7 +33,6 @@ android {
 }
 
 repositories {
-    mavenCentral()
 }
 
 def media3_version = "1.7.1"
