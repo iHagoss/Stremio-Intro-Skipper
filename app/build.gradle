@@ -1,15 +1,16 @@
 plugins {
     id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
     namespace 'com.tvplayer.app'
-    compileSdk 33  // Compile with latest stable SDK
+    compileSdk 33
 
     defaultConfig {
         applicationId "com.tvplayer.app"
-        minSdk 22  // Minimum supported SDK version
-        targetSdk 28  // Target SDK compatible with Fire OS 7.7 (Android Pie)
+        minSdk 22
+        targetSdk 28
         versionCode 1
         versionName "1.0"
         multiDexEnabled true
@@ -19,9 +20,6 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-        }
-        debug {
-            debuggable true
         }
     }
 
@@ -39,15 +37,16 @@ android {
     }
 }
 
+def media3_version = "1.8.0"
+def leanback_version = "1.1.0-rc02"
+
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     implementation 'com.google.android.material:material:1.9.0'
 
-    implementation "androidx.leanback:leanback:1.1.0-rc02"
+    implementation "androidx.leanback:leanback:$leanback_version"
     implementation 'androidx.preference:preference:1.2.1'
-
-    def media3_version = "1.8.0"
 
     implementation "androidx.media3:media3-exoplayer:$media3_version"
     implementation "androidx.media3:media3-ui:$media3_version"
@@ -66,6 +65,5 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
 
     implementation "org.jetbrains.kotlin:kotlin-stdlib:1.9.22"
-
     implementation 'androidx.multidex:multidex:2.0.1'
 }
