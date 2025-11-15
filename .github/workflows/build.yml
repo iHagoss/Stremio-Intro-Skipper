@@ -11,28 +11,56 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      JAVA_VERSION: '17'
+      ANDROID_SDK_ROOT: /usr/local/share/android-sdk
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Set up JDK 23
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 23
+          java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Fix Gradle wrapper
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          api-level: 33
+          build-tools: 33.0.0
+          cache: gradle
+
+      - name: Accept Android SDK Licenses
+        run: yes | sdkmanager --licenses
+
+      - name: Fix Gradle wrapper permissions
         run: |
           sudo apt-get update && sudo apt-get install -y dos2unix
-          dos2unix gradlew
-          chmod +x gradlew
-          test -f gradle/wrapper/gradle-wrapper.jar || { echo "gradle-wrapper.jar missing"; exit 1; }
+          dos2unix ./gradlew
+          chmod +x ./gradlew
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "gradle-wrapper.jar missing"
+            exit 1
+          fi
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK artifact
+      - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Build Release APK (optional)
+        if: github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip release]')
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Upload Release APK Artifact
+        if: success() && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '[skip release]')
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
